@@ -1,0 +1,276 @@
+Build only the FRONTEND for an AI scheduling product called “Schedulo”.
+
+Important:
+- FRONTEND ONLY for this version
+- Do NOT build the backend yet
+- Do NOT integrate real calendar APIs yet
+- Use realistic mock data for now
+- However, structure the frontend cleanly so it can later connect to a Python backend
+- The future backend will be a Python multi-agent system, likely using FastAPI
+- Individual backend agents will later be implemented in Python
+
+Product concept:
+Schedulo is an AI-powered multi-agent meeting scheduler. Different agents work together to find the best meeting times based on calendar availability, user behavior, scheduling preferences, negotiation across attendees, and orchestration of final decisions.
+
+For this frontend version, visually communicate that these agents exist and are working behind the scenes, but use mock data and simulated agent activity.
+
+Future backend architecture to design for:
+- Python backend
+- FastAPI APIs
+- Separate Python agents/modules such as:
+  - calendar agent
+  - behavior / preference agent
+  - coordination / negotiation agent
+  - orchestrator
+The frontend should be organized so it can later connect to endpoints like:
+- /schedule/request
+- /slots/recommendations
+- /agents/activity
+- /preferences/:id
+- /meetings/:id/decision
+
+Primary goal:
+Create an impressive, polished, modern, premium UI/UX that feels like a real next-gen AI scheduling product.
+
+Design expectations:
+- Extremely modern and visually striking
+- Smooth animations and transitions
+- Premium SaaS feel
+- Clean, minimal, futuristic interface
+- Rich micro-interactions
+- Light mode and dark mode support
+- Built-in polished theme toggle
+- Shiny animated text accents in key headings
+- Glassmorphism / subtle glow / elegant gradients are welcome
+- Motion should feel intentional and elegant, not excessive
+- Responsive for desktop and tablet at minimum
+
+Brand / mascot:
+- Create a memorable identity around “Schedulo”
+- Include a small assistant icon or simple character / mascot for Schedulo
+- The assistant should feel intelligent, friendly, sleek, and premium
+- It can blink, pulse, float, or subtly react to user interaction
+- It should not feel childish or cartoonish
+- Use this assistant in strategic areas like:
+  - hero section
+  - assistant panel
+  - agent activity sections
+  - orchestration status views
+
+Recommended stack:
+- React
+- TypeScript
+- Tailwind CSS
+- Framer Motion
+- shadcn/ui
+- lucide-react
+Use the best frontend architecture possible, but keep code clean and scalable.
+
+Code quality requirements:
+- Frontend only
+- Mock data only
+- Clean reusable components
+- Organized folder structure
+- Mock data separated cleanly from UI
+- Easy to swap mock data for real backend responses later
+- Use interfaces/types that map well to future Python API responses
+- Keep architecture production-minded
+
+Please organize the frontend with a scalable structure such as:
+- components/
+- pages/
+- layouts/
+- data/
+- types/
+- hooks/
+- lib/
+- theme/
+
+Pages / screens to build:
+
+1. Landing / Marketing Page
+Purpose:
+Introduce Schedulo as an intelligent AI scheduling assistant.
+
+Include:
+- Hero section with shiny animated headline
+- Elegant subheadline explaining multi-agent scheduling
+- CTA buttons like:
+  - Try Demo
+  - View Agent Flow
+- Animated Schedulo assistant in hero
+- Section explaining how the product works
+- Section highlighting key capabilities:
+  - availability detection
+  - preference-aware scheduling
+  - multi-agent coordination
+  - explainable ranking
+  - human escalation when needed
+- Visual workflow section
+- Footer
+
+Suggested tone:
+- premium
+- intelligent
+- calm confidence
+- futuristic but clean
+
+2. Main App Dashboard
+Purpose:
+Show the core scheduling experience.
+
+Include:
+- Top navigation bar
+- Theme toggle
+- User avatar/profile placeholder
+- Sidebar or collapsible navigation
+- Main scheduling workspace
+- Optional right-side AI assistant / orchestration panel
+
+Dashboard modules:
+A. Upcoming Meetings
+- Mock upcoming meetings list
+- show time, attendees, type, and status
+
+B. Schedule a Meeting
+- Form with:
+  - meeting title
+  - attendees
+  - duration
+  - priority
+  - meeting type
+- Button:
+  - Find Best Slots
+
+C. Suggested Time Slots
+- Ranked suggested slots using mock data
+- Each slot should include reasoning such as:
+  - all attendees free
+  - one soft conflict
+  - requires approval
+  - optimized for external priority
+- Include score, confidence, or ranking badge
+
+D. Agent Activity / Orchestration Panel
+- Simulate backend agent activity visually
+- Show agent states like:
+  - Calendar Agent scanning availability
+  - Behavior Agent analyzing scheduling patterns
+  - Coordination Agent negotiating across attendees
+  - Orchestrator ranking outcomes
+- This should feel dynamic, alive, and visually impressive
+
+E. User Preferences / Scheduling Style
+- Show mock user preferences like:
+  - prefers afternoons
+  - avoids Fridays after 3 PM
+  - will move internal 1:1s for customer calls
+  - escalate when confidence is low
+- Display in elegant cards or compact panels
+
+3. Agent Flow / Explainability Page
+Purpose:
+Visually explain how the multi-agent system works.
+
+Include:
+- Beautiful animated flow diagram or connected card layout
+- Cards for:
+  - Calendar Agent
+  - Behavior / Preference Agent
+  - Coordination Agent
+  - Orchestrator
+- Show what each agent does
+- Show how information flows across them
+- Show that each attendee has local/private scheduling intelligence
+- Show that only constrained signals are shared across agents
+- Make this very portfolio-worthy and visually impressive
+
+4. Meeting Decision / AI Decision Cockpit
+Purpose:
+Show why the system recommended a given slot.
+
+Include:
+- Meeting request summary
+- Ranked slot options
+- Best slot highlighted
+- Explanation of why it was chosen
+- Tradeoffs/conflicts
+- Approval needed state
+- Final recommendation summary
+- Visual confidence indicators
+
+Mock data requirements:
+Create realistic fake data for:
+- users
+- attendees
+- meetings
+- calendar events
+- scheduling preferences
+- candidate slots
+- agent activity logs
+- approval-needed states
+- priority types
+- soft vs hard conflicts
+
+Use sample personas with different styles, such as:
+- morning-preferring user
+- user who moves internal meetings for customer calls
+- user who avoids back-to-back meetings
+- user who often needs approval before rescheduling
+
+UX requirements:
+- use hover states
+- use loading states
+- use skeletons where useful
+- smooth transitions between panels and screens
+- subtle animation in cards/buttons/status chips
+- make assistant feel alive
+- readable in both light and dark mode
+- avoid clutter
+- maintain strong visual hierarchy and spacing
+
+Visual direction:
+Think:
+- premium AI-native SaaS
+- futuristic but elegant
+- glowing accents
+- beautiful typography
+- subtle gradients
+- modern cards
+- strong dark theme
+- polished light theme
+- startup-quality interface
+- not generic admin dashboard
+
+Important implementation note:
+Even though this is frontend-only, design the code as if it will later consume responses from a Python FastAPI backend. Use frontend types/interfaces that anticipate future backend payloads for:
+- meeting request
+- slot recommendation
+- agent status
+- user preference profile
+- decision explanation
+
+Do NOT:
+- build the backend
+- integrate real APIs
+- hardcode everything in messy page files
+- make the UI boring or generic
+- make the mascot childish
+- use weak/default styling
+
+Bonus points:
+- shiny animated headline text
+- floating/blinking Schedulo assistant
+- subtle live agent status indicators
+- polished theme transitions
+- excellent first-load experience
+- mock API service layer for future backend replacement
+- portfolio-level visual quality
+
+Name the product everywhere as:
+Schedulo
+
+The result should feel like:
+- a premium AI copilot
+- a next-gen scheduling product
+- a real startup demo that could later connect to a Python multi-agent backend
