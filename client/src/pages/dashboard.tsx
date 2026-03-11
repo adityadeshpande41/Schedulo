@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,11 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScheduloAssistant } from "@/components/schedulo/assistant";
+import { CalendarConnect } from "@/components/schedulo/calendar-connect";
 import { usePageMeta } from "@/hooks/use-page-meta";
-import {
-  mockApi,
-  mockUsers,
-} from "@/data/mock";
+import { useUpcomingMeetings } from "@/hooks/use-meetings";
+import { useAgentActivity } from "@/hooks/use-agents";
+import { useUserPreferences } from "@/hooks/use-preferences";
+import { useCreateScheduleRequest } from "@/hooks/use-schedule";
+import { mockUsers } from "@/data/mock";
 import type { TimeSlot } from "@/types/schedulo";
 import {
   Calendar,
@@ -78,38 +79,35 @@ function formatDate(dateStr: string) {
 export default function Dashboard() {
   usePageMeta({ title: "Dashboard — Schedulo", description: "Manage your AI-powered schedule with intelligent meeting coordination." });
 
-  const { data: meetings, isLoading: meetingsLoading } = useQuery({
-    queryKey: ["meetings"],
-    queryFn: () => mockApi.getUpcomingMeetings(),
-  });
-
-  const { data: agents, isLoading: agentsLoading } = useQuery({
-    queryKey: ["agents", "activity"],
-    queryFn: () => mockApi.getAgentActivity(),
-  });
-
-  const { data: prefs, isLoading: prefsLoading } = useQuery({
-    queryKey: ["preferences", "u1"],
-    queryFn: () => mockApi.getUserPreferences("u1"),
-  });
+  const userId = import.meta.env.VITE_DEFAULT_USER_ID || "u1";
+  
+  const { data: meetings, isLoading: meetingsLoading } = useUpcomingMeetings(userId);
+  const { data: agents, isLoading: agentsLoading } = useAgentActivity();
+  const { data: prefs, isLoading: prefsLoading } = useUserPreferences(userId);
+  
+  const createSchedule = useCreateScheduleRequest();
 
   const [showSlots, setShowSlots] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slots, setSlots] = useState<TimeSlot[] | null>(null);
 
-  const handleFindSlots = () => {
+  const handleFindSlots = async () => {
     setLoadingSlots(true);
     setShowSlots(true);
-    mockApi.getRecommendedSlots({
-      title: "New Meeting",
-      attendees: ["u2", "u3"],
-      duration: 30,
-      priority: "medium",
-      type: "team_sync",
-    }).then((s) => {
-      setSlots(s);
+    try {
+      const result = await createSchedule.mutateAsync({
+        title: "New Meeting",
+        attendees: ["u2", "u3"],
+        duration: 30,
+        priority: "medium",
+        type: "team_sync",
+      });
+      setSlots(result.recommended_slots);
+    } catch (error) {
+      console.error("Error finding slots:", error);
+    } finally {
       setLoadingSlots(false);
-    });
+    }
   };
 
   return (
@@ -305,6 +303,8 @@ export default function Dashboard() {
               </Tabs>
             </motion.div>
 
+            <CalendarConnect userId={userId} />
+
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Users className="h-4 w-4 text-muted-foreground" />
@@ -363,7 +363,11 @@ export default function Dashboard() {
                     ))
                   ) : (
                     agents?.map((a, i) => {
-                      const meta = agentMeta[a.agentType];
+                      const meta = agentMeta[a.agentType] || { 
+                        icon: Cpu, 
+                        color: "text-gray-500", 
+                        label: a.agentType 
+                      };
                       const Icon = meta.icon;
                       return (
                         <motion.div

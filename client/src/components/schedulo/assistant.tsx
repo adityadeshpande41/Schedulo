@@ -51,6 +51,11 @@ export function ScheduloAssistant({ size = "md", animate = true, className, glow
             </feMerge>
           </filter>
         </defs>
+        
+        {/* Alarm bells on top (external hands) */}
+        <AlarmBells animate={animate} />
+        
+        {/* Main clock body */}
         <circle cx="60" cy="60" r="52" fill="url(#schedulo-grad)" opacity="0.15" />
         <circle cx="60" cy="60" r="40" fill="url(#schedulo-grad)" />
         {animate ? (
@@ -73,6 +78,8 @@ export function ScheduloAssistant({ size = "md", animate = true, className, glow
             opacity={0.6}
           />
         )}
+        
+        {/* Smiley face */}
         <EyeGroup animate={animate} />
         <motion.path
           d="M 46 70 Q 60 80 74 70"
@@ -82,12 +89,9 @@ export function ScheduloAssistant({ size = "md", animate = true, className, glow
           fill="none"
           filter="url(#glow)"
         />
-        <motion.circle
-          cx="60" cy="20" r="4"
-          fill="hsl(280, 70%, 70%)"
-          animate={animate ? { opacity: [0.5, 1, 0.5], scale: [0.8, 1.1, 0.8] } : undefined}
-          transition={animate ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : undefined}
-        />
+        
+        {/* Legs at the bottom */}
+        <ClockLegs animate={animate} />
       </svg>
     </motion.div>
   );
@@ -130,6 +134,83 @@ function EyeGroup({ animate }: { animate: boolean }) {
           transition={{ duration: 0.3, repeat: Infinity, repeatDelay: 4, times: [0, 0.15, 0.85, 1] }}
         />
       )}
+    </g>
+  );
+}
+
+function AlarmBells({ animate }: { animate: boolean }) {
+  return (
+    <g>
+      {/* Left bell */}
+      <motion.g
+        animate={animate ? { rotate: [-8, 8, -8] } : undefined}
+        style={{ transformOrigin: "35px 18px" }}
+        transition={animate ? { duration: 0.6, repeat: Infinity, repeatDelay: 2.5 } : undefined}
+      >
+        <path
+          d="M 30 18 L 25 12"
+          stroke="hsl(280, 70%, 70%)"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        <circle cx="30" cy="18" r="5" fill="hsl(280, 70%, 70%)" />
+      </motion.g>
+      
+      {/* Right bell */}
+      <motion.g
+        animate={animate ? { rotate: [8, -8, 8] } : undefined}
+        style={{ transformOrigin: "85px 18px" }}
+        transition={animate ? { duration: 0.6, repeat: Infinity, repeatDelay: 2.5 } : undefined}
+      >
+        <path
+          d="M 90 18 L 95 12"
+          stroke="hsl(280, 70%, 70%)"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        <circle cx="90" cy="18" r="5" fill="hsl(280, 70%, 70%)" />
+      </motion.g>
+      
+      {/* Top button/knob */}
+      <circle cx="60" cy="12" r="4" fill="hsl(280, 70%, 70%)" />
+    </g>
+  );
+}
+
+function ClockLegs({ animate }: { animate: boolean }) {
+  return (
+    <g>
+      {/* Left leg */}
+      <motion.g
+        animate={animate ? { rotate: [-3, 3, -3] } : undefined}
+        style={{ transformOrigin: "45px 102px" }}
+        transition={animate ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : undefined}
+      >
+        <line
+          x1="45" y1="102"
+          x2="40" y2="115"
+          stroke="hsl(280, 70%, 70%)"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        <circle cx="40" cy="115" r="4" fill="hsl(280, 70%, 70%)" />
+      </motion.g>
+      
+      {/* Right leg */}
+      <motion.g
+        animate={animate ? { rotate: [3, -3, 3] } : undefined}
+        style={{ transformOrigin: "75px 102px" }}
+        transition={animate ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : undefined}
+      >
+        <line
+          x1="75" y1="102"
+          x2="80" y2="115"
+          stroke="hsl(280, 70%, 70%)"
+          strokeWidth="3"
+          strokeLinecap="round"
+        />
+        <circle cx="80" cy="115" r="4" fill="hsl(280, 70%, 70%)" />
+      </motion.g>
     </g>
   );
 }

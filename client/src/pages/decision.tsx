@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,11 +6,12 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScheduloAssistant } from "@/components/schedulo/assistant";
 import { usePageMeta } from "@/hooks/use-page-meta";
-import { mockApi } from "@/data/mock";
+import { useMeetingDecision } from "@/hooks/use-meetings";
 import {
   Star,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
   XCircle,
   CalendarSearch,
   Brain,
@@ -51,10 +51,11 @@ function formatDate(dateStr: string) {
 export default function Decision() {
   usePageMeta({ title: "AI Decision Cockpit — Schedulo", description: "See why Schedulo recommended a specific meeting slot with full explainability." });
 
-  const { data: decision, isLoading } = useQuery({
-    queryKey: ["decision", "m2"],
-    queryFn: () => mockApi.getMeetingDecision("m2"),
-  });
+  // In real app, get meeting ID from URL params
+  // For demo, using a default meeting ID
+  const meetingId = "m2";
+  
+  const { data: decision, isLoading } = useMeetingDecision(meetingId);
 
   if (isLoading || !decision) {
     return (
@@ -69,6 +70,23 @@ export default function Decision() {
   }
 
   const rec = decision.recommendedSlot;
+
+  // If no recommendation slot, show a message
+  if (!rec) {
+    return (
+      <div className="min-h-screen bg-background pt-20 pb-16">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <Card className="p-8 text-center">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h2 className="text-xl font-semibold mb-2">No Recommendation Available</h2>
+            <p className="text-muted-foreground">
+              The AI system hasn't generated a recommendation yet. Please try scheduling a meeting first.
+            </p>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pt-20 pb-16">

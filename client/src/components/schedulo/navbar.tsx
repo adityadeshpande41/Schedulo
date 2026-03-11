@@ -5,7 +5,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Workflow, Sparkles } from "lucide-react";
+import { LayoutDashboard, Workflow, Sparkles, Home } from "lucide-react";
 
 interface NavbarProps {
   theme: "light" | "dark";
@@ -14,8 +14,8 @@ interface NavbarProps {
 }
 
 const appLinks = [
+  { href: "/", label: "Home", icon: Home },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/agents", label: "Agent Flow", icon: Workflow },
   { href: "/decision", label: "AI Cockpit", icon: Sparkles },
 ];
 
@@ -73,11 +73,11 @@ export function Navbar({ theme, onToggleTheme, variant = "landing" }: NavbarProp
             })}
           {variant === "landing" && (
             <>
-              <Link href="/dashboard">
-                <Button variant="ghost" size="sm" data-testid="link-try-demo">Try Demo</Button>
-              </Link>
               <Link href="/agents">
-                <Button variant="ghost" size="sm" data-testid="link-agent-flow">Agent Flow</Button>
+                <Button variant="ghost" size="sm" data-testid="link-agent-flow">Learn More</Button>
+              </Link>
+              <Link href="/dashboard">
+                <Button variant="default" size="sm" data-testid="link-try-demo">Try Demo</Button>
               </Link>
             </>
           )}

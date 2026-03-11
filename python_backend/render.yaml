@@ -1,0 +1,39 @@
+# Render Blueprint for Schedulo
+# This file defines the infrastructure for deploying on Render
+
+services:
+  # FastAPI Backend
+  - type: web
+    name: schedulo-api
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: API_V1_STR
+        value: /api
+      - key: PROJECT_NAME
+        value: Schedulo
+      - key: AGENT_TIMEOUT
+        value: 30
+      - key: LOOKBACK_DAYS
+        value: 90
+      - key: DEBUG
+        value: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: schedulo-db
+          property: connectionString
+      - key: CORS_ORIGINS
+        sync: false  # Set this manually in Render dashboard
+
+databases:
+  # PostgreSQL Database
+  - name: schedulo-db
+    databaseName: schedulo
+    plan: free
+    region: oregon

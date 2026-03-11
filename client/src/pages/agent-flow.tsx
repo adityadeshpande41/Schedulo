@@ -1,15 +1,18 @@
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScheduloAssistant } from "@/components/schedulo/assistant";
 import { usePageMeta } from "@/hooks/use-page-meta";
-import { agentInfoList } from "@/data/mock";
+import { useAgentInfo } from "@/hooks/use-agents";
+import { Link } from "wouter";
 import {
   CalendarSearch,
   Brain,
   Users,
   Cpu,
   ArrowDown,
+  ArrowRight,
   Lock,
   Unlock,
   Shield,
@@ -73,6 +76,8 @@ const fadeUp = {
 export default function AgentFlow() {
   usePageMeta({ title: "Multi-Agent Architecture — Schedulo", description: "Explore how Schedulo's AI agents collaborate for optimal scheduling decisions." });
 
+  const { data: agentInfoList = [], isLoading } = useAgentInfo();
+
   return (
     <div className="min-h-screen bg-background pt-20 pb-16">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
@@ -90,6 +95,16 @@ export default function AgentFlow() {
           </p>
         </motion.div>
 
+        {/* Loading State */}
+        {isLoading && (
+          <div className="text-center py-12">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
+            <p className="mt-4 text-muted-foreground">Loading agent information...</p>
+          </div>
+        )}
+
+        {/* Agent Cards */}
+        {!isLoading && (
         <div className="grid md:grid-cols-2 gap-8 mb-20">
           {agentInfoList.map((agent, i) => {
             const Icon = agentIcons[agent.type];
@@ -130,6 +145,7 @@ export default function AgentFlow() {
             );
           })}
         </div>
+        )}
 
         <motion.div {...fadeUp} className="mb-8 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">Information Flow</h2>
@@ -178,9 +194,15 @@ export default function AgentFlow() {
           <Card className="p-8 text-center border-primary/20 bg-gradient-to-b from-primary/5 to-transparent">
             <Shield className="h-8 w-8 text-primary mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">Privacy by Design</h3>
-            <p className="text-sm text-muted-foreground max-w-lg mx-auto leading-relaxed">
+            <p className="text-sm text-muted-foreground max-w-lg mx-auto leading-relaxed mb-6">
               Each attendee's scheduling intelligence runs locally. Only constrained availability signals — never raw calendar data — are shared with the coordination layer. This ensures privacy while enabling optimal group scheduling.
             </p>
+            <Link href="/dashboard">
+              <Button size="lg" className="gap-2">
+                Try the Demo
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
           </Card>
         </motion.div>
       </div>
