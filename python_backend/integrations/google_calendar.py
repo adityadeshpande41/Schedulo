@@ -11,6 +11,9 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+# Store flow instances temporarily (in production, use Redis or database)
+_flow_storage = {}
+
 
 class GoogleCalendarIntegration:
     """
@@ -26,6 +29,13 @@ class GoogleCalendarIntegration:
         self.client_id = os.getenv("GOOGLE_CLIENT_ID")
         self.client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
         self.redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback")
+        
+        # Load credentials from JSON file
+        self.credentials_file = os.path.join(
+            os.path.dirname(__file__), 
+            "..", 
+            "google_credentials.json"
+        )
     
     def get_authorization_url(self, user_id: str) -> str:
         """
@@ -33,16 +43,8 @@ class GoogleCalendarIntegration:
         
         Returns URL to redirect user to for Google consent
         """
-        flow = Flow.from_client_config(
-            {
-                "web": {
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [self.redirect_uri]
-                }
-            },
+        flow = Flow.from_client_secrets_file(
+            self.credentials_file,
             scopes=self.SCOPES,
             redirect_uri=self.redirect_uri
         )
@@ -50,8 +52,12 @@ class GoogleCalendarIntegration:
         authorization_url, state = flow.authorization_url(
             access_type='offline',
             include_granted_scopes='true',
-            state=user_id  # Pass user_id as state
+            state=user_id,  # Pass user_id as state
+            prompt='consent'  # Force consent screen to get refresh token
         )
+        
+        # Store flow for later use in callback
+        _flow_storage[user_id] = flow
         
         return authorization_url
     
@@ -71,25 +77,27 @@ class GoogleCalendarIntegration:
             "expires_at": datetime
         }
         """
-        flow = Flow.from_client_config(
-            {
-                "web": {
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [self.redirect_uri]
-                }
-            },
-            scopes=self.SCOPES,
-            redirect_uri=self.redirect_uri
-        )
+        user_id = state
+        
+        # Retrieve the stored flow
+        flow = _flow_storage.get(user_id)
+        if not flow:
+            # Fallback: create new flow (won't work with PKCE but try anyway)
+            flow = Flow.from_client_secrets_file(
+                self.credentials_file,
+                scopes=self.SCOPES,
+                redirect_uri=self.redirect_uri
+            )
         
         flow.fetch_token(code=code)
         credentials = flow.credentials
         
+        # Clean up stored flow
+        if user_id in _flow_storage:
+            del _flow_storage[user_id]
+        
         return {
-            "user_id": state,  # state contains user_id
+            "user_id": user_id,
             "access_token": credentials.token,
             "refresh_token": credentials.refresh_token,
             "expires_at": credentials.expiry

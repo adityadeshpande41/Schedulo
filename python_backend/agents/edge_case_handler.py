@@ -36,26 +36,47 @@ class EdgeCaseHandler:
         - Fair distribution of inconvenient times
         - Timezone-aware recommendations
         """
+        from datetime import datetime
+        
         fair_slots = []
         
         for slot in slots:
-            start_time = slot["window"]["start"]
+            # Handle different slot structures
+            if "window" in slot and "start" in slot["window"]:
+                start_time = slot["window"]["start"]
+            elif "start_time" in slot:
+                start_time = slot["start_time"]
+            else:
+                # Skip slots without time information
+                continue
+            
+            # Convert string to datetime if needed
+            if isinstance(start_time, str):
+                try:
+                    start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                except:
+                    continue
+                
             fairness_scores = []
             
             for user_id, tz_str in attendee_timezones.items():
-                tz = pytz.timezone(tz_str)
-                local_time = start_time.astimezone(tz)
-                hour = local_time.hour
-                
-                # Score based on local time
-                if 9 <= hour <= 17:  # Normal working hours
-                    fairness_scores.append(1.0)
-                elif 8 <= hour < 9 or 17 < hour <= 18:  # Slightly outside
-                    fairness_scores.append(0.7)
-                elif 7 <= hour < 8 or 18 < hour <= 19:  # Early/late
-                    fairness_scores.append(0.4)
-                else:  # Outside reasonable hours
-                    fairness_scores.append(0.0)
+                try:
+                    tz = pytz.timezone(tz_str)
+                    local_time = start_time.astimezone(tz)
+                    hour = local_time.hour
+                    
+                    # Score based on local time
+                    if 9 <= hour <= 17:  # Normal working hours
+                        fairness_scores.append(1.0)
+                    elif 8 <= hour < 9 or 17 < hour <= 18:  # Slightly outside
+                        fairness_scores.append(0.7)
+                    elif 7 <= hour < 8 or 18 < hour <= 19:  # Early/late
+                        fairness_scores.append(0.4)
+                    else:  # Outside reasonable hours
+                        fairness_scores.append(0.0)
+                except:
+                    # Skip if timezone conversion fails
+                    continue
             
             # Calculate overall fairness
             if fairness_scores:
@@ -65,13 +86,17 @@ class EdgeCaseHandler:
                 # Penalize if anyone has very unfair time
                 if min_fairness < 0.3:
                     slot["timezone_warning"] = "Outside working hours for some attendees"
-                    slot["confidence"] *= 0.5
+                    if "confidence" in slot:
+                        slot["confidence"] *= 0.5
                 
                 slot["timezone_fairness"] = avg_fairness
                 
                 # Only include if reasonably fair
                 if avg_fairness > 0.5:
                     fair_slots.append(slot)
+            else:
+                # No timezone info, include slot anyway
+                fair_slots.append(slot)
         
         return fair_slots
     

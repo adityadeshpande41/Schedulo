@@ -67,6 +67,10 @@ class LangGraphOrchestrator:
         self.memory = MemorySaver()  # For checkpointing
         self.ai_assistant = OpenAIAssistant("orchestrator")
         self.time_generator = TimeWindowGenerator()
+        
+        # Cache personal agents to avoid recreating and retraining
+        self._agent_cache = {}
+        
         self.graph = self._build_graph()
     
     def _build_graph(self) -> StateGraph:
@@ -177,7 +181,8 @@ class LangGraphOrchestrator:
         time_windows = self.time_generator.generate_windows(
             parsed_request=state["parsed_request"],
             duration=state["duration"],
-            num_slots=20  # Generate 20 candidate slots
+            num_slots=10,  # Reduced from 20 to 10 for faster response
+            preferred_time_range=state["meeting_context"].get("preferred_time_range")
         )
         
         print(f"📅 [LangGraph] Generated {len(time_windows)} candidate time windows")
@@ -186,7 +191,11 @@ class LangGraphOrchestrator:
         
         # Execute agents in parallel (in production, use asyncio.gather)
         for user_id in state["attendee_ids"]:
-            agent = PersonalAgent(user_id)
+            # Use cached agent if available (avoids retraining ML model!)
+            if user_id not in self._agent_cache:
+                self._agent_cache[user_id] = PersonalAgent(user_id)
+            
+            agent = self._agent_cache[user_id]
             
             result = await agent.execute({
                 "request_type": "availability_check",
@@ -371,9 +380,8 @@ class LangGraphOrchestrator:
         
         Escalate if:
         - No recommendations found
-        - Low confidence (< 60%)
-        - Requires approval
-        - Edge cases unresolved
+        - Very low confidence (< 30%)
+        - Critical edge cases unresolved
         """
         # No recommendations
         if not state["ranked_recommendations"]:
@@ -382,21 +390,13 @@ class LangGraphOrchestrator:
         
         top_slot = state["ranked_recommendations"][0]
         
-        # Low confidence
-        if top_slot.get("confidence", 0) < 0.6:
-            state["escalation_reason"] = f"Low confidence ({top_slot.get('confidence', 0):.0%})"
+        # Very low confidence (lowered threshold from 60% to 30%)
+        if top_slot.get("confidence", 0) < 0.3:
+            state["escalation_reason"] = f"Very low confidence ({top_slot.get('confidence', 0):.0%})"
             return "escalate"
         
-        # Requires approval
-        if top_slot.get("requires_approval"):
-            state["escalation_reason"] = "Requires rescheduling existing meetings"
-            return "escalate"
-        
-        # Unresolved edge cases
-        critical_edge_cases = ["all_busy", "conflicting_priorities"]
-        if any(ec in state["edge_cases_handled"] for ec in critical_edge_cases):
-            state["escalation_reason"] = "Critical edge cases detected"
-            return "escalate"
+        # Note: Removed "requires_approval" escalation - let user decide
+        # Note: Removed edge case escalation - show results anyway
         
         return "complete"
     

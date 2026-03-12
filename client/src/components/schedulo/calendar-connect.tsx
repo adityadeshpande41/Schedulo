@@ -20,11 +20,27 @@ export function CalendarConnect({ userId }: CalendarConnectProps) {
 
   const checkCalendarStatus = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/calendar/status/${userId}`);
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+      
+      const response = await fetch(
+        `http://localhost:8000/api/calendar/status/${userId}`,
+        { signal: controller.signal }
+      );
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch calendar status');
+      }
+      
       const data = await response.json();
       setConnected(data.connected);
     } catch (error) {
       console.error("Failed to check calendar status:", error);
+      // Fail gracefully - assume not connected
+      setConnected(false);
     } finally {
       setLoading(false);
     }
@@ -33,13 +49,28 @@ export function CalendarConnect({ userId }: CalendarConnectProps) {
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/calendar/connect/google?user_id=${userId}`);
+      // Add timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(
+        `http://localhost:8000/api/calendar/connect/google?user_id=${userId}`,
+        { signal: controller.signal }
+      );
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error('Failed to connect calendar');
+      }
+      
       const data = await response.json();
       
       // Redirect to Google OAuth
       window.location.href = data.authorization_url;
     } catch (error) {
       console.error("Failed to connect calendar:", error);
+      alert("Failed to connect calendar. Make sure the backend is running.");
       setConnecting(false);
     }
   };

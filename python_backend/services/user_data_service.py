@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from database.models import (
-    User, Meeting, MeetingAttendee, UserPreferences,
+    User, Meeting, MeetingAttendee, UserPreference,
     CalendarEvent, HistoricalMeeting, TimeSlot
 )
 from database.connection import get_db
@@ -50,9 +50,9 @@ class UserDataService:
                 "start_time": event.start_time,
                 "end_time": event.end_time,
                 "title": event.title,
-                "is_busy": event.is_busy,
-                "is_flexible": event.is_flexible,
-                "priority": event.priority
+                "is_busy": True,  # Assume all calendar events are busy
+                "is_flexible": False,  # External events are not flexible
+                "priority": "medium"  # Default priority
             }
             for event in events
         ]
@@ -63,26 +63,9 @@ class UserDataService:
         
         PRIVACY: Only returns this user's preferences
         """
-        prefs = self.db.query(UserPreferences).filter(
-            UserPreferences.user_id == user_id
-        ).first()
-        
-        if not prefs:
-            return self._get_default_preferences()
-        
-        return {
-            "work_hours_start": prefs.work_hours_start,
-            "work_hours_end": prefs.work_hours_end,
-            "timezone": prefs.timezone,
-            "preferred_meeting_duration": prefs.preferred_meeting_duration,
-            "buffer_time": prefs.buffer_time,
-            "max_meetings_per_day": prefs.max_meetings_per_day,
-            "preferred_days": prefs.preferred_days or [],
-            "avoid_days": prefs.avoid_days or [],
-            "lunch_break_start": prefs.lunch_break_start,
-            "lunch_break_end": prefs.lunch_break_end,
-            "focus_time_blocks": prefs.focus_time_blocks or []
-        }
+        # TODO: Parse preferences from key-value UserPreference table
+        # For now, return defaults since the table structure doesn't match
+        return self._get_default_preferences()
     
     def get_historical_meetings(
         self,
@@ -100,22 +83,22 @@ class UserDataService:
         historical = self.db.query(HistoricalMeeting).filter(
             and_(
                 HistoricalMeeting.user_id == user_id,
-                HistoricalMeeting.meeting_date >= cutoff_date
+                HistoricalMeeting.start_time >= cutoff_date
             )
         ).all()
         
         return [
             {
                 "meeting_id": h.id,
-                "start_time": h.meeting_date,
+                "start_time": h.start_time,
                 "duration": h.duration,
                 "type": h.meeting_type,
-                "priority": h.priority,
+                "priority": "medium",  # Default since not in model
                 "was_accepted": h.was_accepted,
                 "was_rescheduled": h.was_rescheduled,
-                "response_time": h.response_time_seconds,
-                "original_start": h.original_start_time,
-                "actual_start": h.actual_start_time
+                "response_time": 0,  # Not in model
+                "original_start": h.start_time,
+                "actual_start": h.start_time
             }
             for h in historical
         ]

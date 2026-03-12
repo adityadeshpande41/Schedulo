@@ -1,46 +1,106 @@
 """
 ML Behavior Learning Model
-Learns user scheduling preferences from historical data
+Learns user scheduling preferences from historical data using scikit-learn
 """
 
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import numpy as np
 from collections import defaultdict
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.preprocessing import StandardScaler
+import pickle
+import os
 
 
 class BehaviorLearningModel:
     """
     Machine Learning model for learning user scheduling behavior
     
+    Uses Random Forest for acceptance prediction and Gradient Boosting for reschedule prediction
+    
     Learns:
     - Time of day preferences
-    - Day of week preferences
+    - Day of week preferences  
     - Meeting type preferences
     - Reschedule patterns
-    - Acceptance/decline patterns
+    - Feature interactions (e.g., "prefers 2pm on Tuesdays")
     """
     
     def __init__(self, user_id: str):
         self.user_id = user_id
         
-        # Learned patterns (will be populated from historical data)
+        # Statistical patterns (fast lookup)
         self.time_preferences = {}  # hour -> acceptance_rate
         self.day_preferences = {}   # day_of_week -> acceptance_rate
         self.type_preferences = {}  # meeting_type -> acceptance_rate
         self.reschedule_patterns = {}  # meeting_type -> reschedule_rate
         
+        # ML Models (for complex patterns)
+        self.acceptance_model = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
+            min_samples_split=5,
+            random_state=42
+        )
+        self.reschedule_model = GradientBoostingClassifier(
+            n_estimators=50,
+            max_depth=5,
+            learning_rate=0.1,
+            random_state=42
+        )
+        self.scaler = StandardScaler()
+        
         # Model state
         self.is_trained = False
         self.training_samples = 0
+        self.model_accuracy = 0.0
+    
+    def _extract_features(
+        self,
+        time_window: Dict[str, datetime],
+        meeting_context: Dict[str, Any]
+    ) -> np.ndarray:
+        """
+        Extract features for ML model
         
-        # TODO: In production, use scikit-learn models
-        # self.acceptance_model = RandomForestClassifier()
-        # self.reschedule_model = XGBClassifier()
+        Features:
+        - Hour of day (0-23)
+        - Day of week (0-6)
+        - Is morning (0/1)
+        - Is afternoon (0/1)
+        - Is end of day (0/1)
+        - Duration (minutes)
+        - Priority (0=low, 1=medium, 2=high)
+        - Meeting type (one-hot encoded)
+        - Day of month
+        - Week of year
+        """
+        start_time = time_window["start"]
+        
+        features = [
+            start_time.hour,
+            start_time.weekday(),
+            1 if 6 <= start_time.hour < 12 else 0,  # morning
+            1 if 12 <= start_time.hour < 17 else 0,  # afternoon
+            1 if 17 <= start_time.hour < 20 else 0,  # end of day
+            meeting_context.get("duration", 30),
+            {"low": 0, "medium": 1, "high": 2}.get(meeting_context.get("priority", "medium"), 1),
+            start_time.day,
+            start_time.isocalendar()[1],  # week of year
+        ]
+        
+        # One-hot encode meeting type
+        meeting_types = ["team_sync", "one_on_one", "client_call", "standup", "workshop", "interview"]
+        mtype = meeting_context.get("type", "team_sync")
+        for mt in meeting_types:
+            features.append(1 if mtype == mt else 0)
+        
+        return np.array(features).reshape(1, -1)
     
     def train(self, historical_data: List[Dict[str, Any]]):
         """
-        Train model on historical meeting data
+        Train both statistical patterns and ML models
         
         Data format:
         {
@@ -51,14 +111,25 @@ class BehaviorLearningModel:
             "priority": "medium",
             "was_accepted": True,
             "was_rescheduled": False,
-            "response_time": 120  # seconds
+            "response_time": 120
         }
         """
-        if not historical_data:
+        if not historical_data or len(historical_data) < 10:
+            # Need at least 10 samples for ML
             return
         
         self.training_samples = len(historical_data)
         
+        # Train statistical patterns (fast, interpretable)
+        self._train_statistical_patterns(historical_data)
+        
+        # Train ML models (accurate, captures interactions)
+        self._train_ml_models(historical_data)
+        
+        self.is_trained = True
+    
+    def _train_statistical_patterns(self, historical_data: List[Dict[str, Any]]):
+        """Train simple statistical patterns"""
         # Learn time of day preferences
         time_stats = defaultdict(lambda: {"accepted": 0, "total": 0})
         for meeting in historical_data:
@@ -110,8 +181,43 @@ class BehaviorLearningModel:
             mtype: stats["rescheduled"] / stats["total"]
             for mtype, stats in reschedule_stats.items()
         }
+    
+    def _train_ml_models(self, historical_data: List[Dict[str, Any]]):
+        """Train ML models for complex pattern recognition"""
+        # Prepare training data
+        X = []
+        y_acceptance = []
+        y_reschedule = []
         
-        self.is_trained = True
+        for meeting in historical_data:
+            features = self._extract_features(
+                {"start": meeting["start_time"]},
+                {
+                    "duration": meeting.get("duration", 30),
+                    "type": meeting.get("type", "team_sync"),
+                    "priority": meeting.get("priority", "medium")
+                }
+            )
+            X.append(features[0])
+            y_acceptance.append(1 if meeting["was_accepted"] else 0)
+            y_reschedule.append(1 if meeting.get("was_rescheduled", False) else 0)
+        
+        X = np.array(X)
+        y_acceptance = np.array(y_acceptance)
+        y_reschedule = np.array(y_reschedule)
+        
+        # Scale features
+        X_scaled = self.scaler.fit_transform(X)
+        
+        # Train acceptance model
+        self.acceptance_model.fit(X_scaled, y_acceptance)
+        
+        # Train reschedule model (if we have reschedule data)
+        if sum(y_reschedule) > 0:
+            self.reschedule_model.fit(X_scaled, y_reschedule)
+        
+        # Calculate accuracy
+        self.model_accuracy = self.acceptance_model.score(X_scaled, y_acceptance)
     
     def predict_acceptance(
         self,
@@ -122,12 +228,24 @@ class BehaviorLearningModel:
         """
         Predict probability user will accept this meeting slot
         
+        Uses ML model if trained, falls back to statistical patterns
+        
         Returns: float between 0.0 and 1.0
         """
         if not self.is_trained and historical_data:
             self.train(historical_data)
         
-        # Base probability
+        # Use ML model if trained and accurate
+        if self.is_trained and self.training_samples >= 20:
+            try:
+                features = self._extract_features(time_window, meeting_context)
+                features_scaled = self.scaler.transform(features)
+                prob = self.acceptance_model.predict_proba(features_scaled)[0][1]
+                return float(prob)
+            except Exception as e:
+                print(f"ML prediction failed, using statistical fallback: {e}")
+        
+        # Fallback to statistical patterns
         prob = 0.5
         
         # Time of day factor
@@ -163,14 +281,23 @@ class BehaviorLearningModel:
         if not self.is_trained and historical_data:
             self.train(historical_data)
         
+        # Use ML model if trained
+        if self.is_trained and self.training_samples >= 20:
+            try:
+                features = self._extract_features(time_window, meeting_context)
+                features_scaled = self.scaler.transform(features)
+                prob = self.reschedule_model.predict_proba(features_scaled)[0][1]
+                return float(prob)
+            except Exception:
+                pass
+        
+        # Fallback to statistical patterns
         mtype = meeting_context.get("type")
         base_rate = self.reschedule_patterns.get(mtype, 0.3)
         
-        # High priority increases reschedule probability
         if meeting_context.get("priority") == "high":
             return min(1.0, base_rate * 1.5)
         
-        # Client calls more likely to cause reschedules
         if mtype == "client_call":
             return min(1.0, base_rate * 1.3)
         

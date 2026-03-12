@@ -45,9 +45,14 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
     
+    # Email (Resend)
+    RESEND_API_KEY: str = ""
+    FROM_EMAIL: str = "onboarding@resend.dev"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "allow"  # Allow extra fields from .env
 
 
 settings = Settings()

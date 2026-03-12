@@ -24,11 +24,99 @@ class MeetingService:
         user_id: str,
         days: int
     ) -> List[MeetingResponse]:
-        """Get upcoming meetings for a user"""
+        """Get upcoming meetings for a user - includes both Schedulo meetings and calendar events"""
+        from database.connection import get_db
+        from database.models import Meeting, MeetingAttendee, User, CalendarEvent
+        from sqlalchemy import and_, or_
         
-        # TODO: Query database
-        # For now, return mock data
-        return self._get_mock_meetings()
+        # Query real meetings from database
+        db = next(get_db())
+        try:
+            end_date = datetime.utcnow() + timedelta(days=days)
+            
+            # Get Schedulo meetings
+            meetings = db.query(Meeting).join(
+                MeetingAttendee, Meeting.id == MeetingAttendee.meeting_id
+            ).filter(
+                and_(
+                    MeetingAttendee.user_id == user_id,
+                    Meeting.start_time >= datetime.utcnow(),
+                    Meeting.start_time <= end_date
+                )
+            ).order_by(Meeting.start_time).all()
+            
+            result = []
+            
+            # Add Schedulo meetings
+            for meeting in meetings:
+                # Get all attendees
+                attendees = []
+                for ma in meeting.attendees:
+                    user = db.query(User).filter(User.id == ma.user_id).first()
+                    if user:
+                        attendees.append(AttendeeResponse(
+                            id=user.id,
+                            name=user.name,
+                            email=user.email,
+                            role=user.role or "Member",
+                            availability="available",
+                            response_status=ma.response_status or "pending"
+                        ))
+                
+                result.append(MeetingResponse(
+                    id=meeting.id,
+                    title=meeting.title,
+                    type=meeting.type.value if hasattr(meeting.type, 'value') else meeting.type,
+                    start_time=meeting.start_time,
+                    end_time=meeting.end_time,
+                    duration=meeting.duration,
+                    attendees=attendees,
+                    status=meeting.status.value if hasattr(meeting.status, 'value') else meeting.status,
+                    priority=meeting.priority.value if hasattr(meeting.priority, 'value') else meeting.priority,
+                    location=meeting.location,
+                    description=meeting.description
+                ))
+            
+            # Get calendar events (from Google Calendar)
+            calendar_events = db.query(CalendarEvent).filter(
+                and_(
+                    CalendarEvent.user_id == user_id,
+                    CalendarEvent.start_time >= datetime.utcnow(),
+                    CalendarEvent.start_time <= end_date
+                )
+            ).order_by(CalendarEvent.start_time).all()
+            
+            # Add calendar events as meetings
+            for event in calendar_events:
+                duration = int((event.end_time - event.start_time).total_seconds() / 60)
+                
+                result.append(MeetingResponse(
+                    id=f"cal_{event.id}",
+                    title=event.title,
+                    type="external",  # Mark as external calendar event
+                    start_time=event.start_time,
+                    end_time=event.end_time,
+                    duration=duration,
+                    attendees=[AttendeeResponse(
+                        id=user_id,
+                        name="You",
+                        email="",
+                        role="Organizer",
+                        availability="busy",
+                        response_status="accepted"
+                    )],
+                    status="confirmed",
+                    priority="medium",
+                    location=event.location,
+                    description=event.description
+                ))
+            
+            # Sort all by start time
+            result.sort(key=lambda x: x.start_time)
+            
+            return result
+        finally:
+            db.close()
     
     async def get_meeting_by_id(
         self,

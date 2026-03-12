@@ -122,6 +122,7 @@ class PersonalAgent(BaseAgent):
             is_busy = self._check_calendar_busy(window)
             
             # 2. ML prediction: Will user accept this slot?
+            # This is the key ML integration!
             acceptance_prob = self.behavior_model.predict_acceptance(
                 window,
                 meeting_context,
@@ -147,6 +148,8 @@ class PersonalAgent(BaseAgent):
                     status = "busy"
                     confidence = 1.0
             else:
+                # Use ML prediction to determine confidence
+                # This makes each slot have different scores based on learned patterns!
                 if acceptance_prob > 0.8:
                     status = "available"
                     confidence = acceptance_prob
@@ -164,7 +167,7 @@ class PersonalAgent(BaseAgent):
             signal = AvailabilitySignal(
                 time_slot=window,
                 status=status,
-                confidence=confidence,
+                confidence=confidence,  # Now varies based on ML predictions!
                 flexibility_score=flexibility,
                 priority_override=self._check_priority_override(window, meeting_context)
             )
@@ -177,9 +180,11 @@ class PersonalAgent(BaseAgent):
             data={
                 "user_id": self.user_id,
                 "availability_signals": [s.to_dict() for s in availability_signals],
-                "overall_confidence": sum(s.confidence for s in availability_signals) / len(availability_signals) if availability_signals else 0
+                "overall_confidence": sum(s.confidence for s in availability_signals) / len(availability_signals) if availability_signals else 0,
+                "ml_model_trained": self.behavior_model.is_trained,
+                "training_samples": self.behavior_model.training_samples
             },
-            message=f"Availability analysis complete for {self.user_id}",
+            message=f"Availability analysis complete for {self.user_id} (ML: {self.behavior_model.is_trained})",
             confidence=sum(s.confidence for s in availability_signals) / len(availability_signals) if availability_signals else 0
         )
     
@@ -271,9 +276,12 @@ class PersonalAgent(BaseAgent):
                 lookback_days=90
             )
             
-            # Train ML model if we have data
-            if self.historical_data:
+            # Train ML model ONLY if not already trained
+            # This prevents retraining on every request (huge performance boost!)
+            if self.historical_data and not self.behavior_model.is_trained:
+                print(f"🤖 Training ML model for {self.user_id} with {len(self.historical_data)} samples...")
                 self.behavior_model.train(self.historical_data)
+                print(f"✅ ML model trained (accuracy: {self.behavior_model.model_accuracy:.2%})")
             
         finally:
             data_service.close()
@@ -283,13 +291,27 @@ class PersonalAgent(BaseAgent):
         if not self.private_calendar:
             return False
         
+        from datetime import timezone
+        
         start = window["start"]
         end = window["end"]
+        
+        # Ensure start and end are timezone-aware
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
         
         # Check for conflicts
         for event in self.private_calendar:
             event_start = event["start_time"]
             event_end = event["end_time"]
+            
+            # Ensure event times are timezone-aware
+            if event_start.tzinfo is None:
+                event_start = event_start.replace(tzinfo=timezone.utc)
+            if event_end.tzinfo is None:
+                event_end = event_end.replace(tzinfo=timezone.utc)
             
             # Skip if not marked as busy
             if not event.get("is_busy", True):

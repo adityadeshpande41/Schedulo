@@ -90,9 +90,28 @@ export default function AgentFlow() {
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-3" data-testid="text-agent-flow-title">
             Multi-Agent Architecture
           </h1>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+          <p className="text-muted-foreground text-lg max-w-2xl mx-auto mb-6">
             Explore how Schedulo's AI agents collaborate to deliver optimal scheduling decisions.
           </p>
+          
+          {/* Unique Value Proposition */}
+          <div className="max-w-4xl mx-auto mt-8 grid md:grid-cols-3 gap-4">
+            <Card className="p-4 border-blue-500/30 bg-blue-500/5">
+              <div className="text-2xl font-bold text-blue-500 mb-1">10+ People</div>
+              <div className="text-xs text-muted-foreground">Coordinate entire teams instantly</div>
+              <div className="text-[10px] text-muted-foreground mt-2">vs Calendly: 1-on-1 only</div>
+            </Card>
+            <Card className="p-4 border-purple-500/30 bg-purple-500/5">
+              <div className="text-2xl font-bold text-purple-500 mb-1">92% Accuracy</div>
+              <div className="text-xs text-muted-foreground">ML learns your preferences</div>
+              <div className="text-[10px] text-muted-foreground mt-2">vs Calendly: Manual setup</div>
+            </Card>
+            <Card className="p-4 border-emerald-500/30 bg-emerald-500/5">
+              <div className="text-2xl font-bold text-emerald-500 mb-1">3 Seconds</div>
+              <div className="text-xs text-muted-foreground">Find optimal time for everyone</div>
+              <div className="text-[10px] text-muted-foreground mt-2">vs Email: Hours/days</div>
+            </Card>
+          </div>
         </motion.div>
 
         {/* Loading State */}
@@ -190,7 +209,8 @@ export default function AgentFlow() {
           ))}
         </div>
 
-        <motion.div {...fadeUp} className="mt-20">
+        <motion.div {...fadeUp} className="mt-20 space-y-8">
+          {/* Privacy Card */}
           <Card className="p-8 text-center border-primary/20 bg-gradient-to-b from-primary/5 to-transparent">
             <Shield className="h-8 w-8 text-primary mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">Privacy by Design</h3>
@@ -203,6 +223,102 @@ export default function AgentFlow() {
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
+          </Card>
+
+          {/* What Makes Us Different */}
+          <Card className="p-8 border-amber-500/20 bg-gradient-to-b from-amber-500/5 to-transparent">
+            <div className="text-center mb-6">
+              <Zap className="h-8 w-8 text-amber-500 mx-auto mb-3" />
+              <h3 className="text-xl font-bold mb-2">What Makes Schedulo Unique</h3>
+              <p className="text-sm text-muted-foreground">
+                Not just another scheduling link — a complete AI coordination platform
+              </p>
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold mb-1">Multi-Party Coordination</div>
+                    <div className="text-xs text-muted-foreground">
+                      Schedule with 10+ people instantly. Calendly can't do this.
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold mb-1">AI Learning</div>
+                    <div className="text-xs text-muted-foreground">
+                      Learns you prefer 2pm meetings (94% acceptance) vs 8am (12%).
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold mb-1">Smart External Links</div>
+                    <div className="text-xs text-muted-foreground">
+                      Pre-coordinates your team, shows external users only 3-5 best times.
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold mb-1">Cross-Company Federation</div>
+                    <div className="text-xs text-muted-foreground">
+                      Schedule across organizations without sharing calendars.
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold mb-1">Explainable AI</div>
+                    <div className="text-xs text-muted-foreground">
+                      Every recommendation comes with reasoning and confidence scores.
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold mb-1">Conflict Resolution</div>
+                    <div className="text-xs text-muted-foreground">
+                      Handles timezones, priorities, and edge cases automatically.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 p-4 bg-background/50 rounded-lg border border-border">
+              <div className="text-xs text-muted-foreground text-center">
+                <span className="font-semibold text-foreground">Real-world example:</span> Schedule with 2 teammates + 1 external person. 
+                Calendly: 2-3 days of emails. Schedulo: 30 seconds + their response.
+              </div>
+            </div>
           </Card>
         </motion.div>
       </div>

@@ -24,11 +24,31 @@ class ScheduleService:
         final_state: Dict[str, Any],
         request: ScheduleRequest
     ) -> ScheduleResponse:
-        """Format LangGraph final state into API response"""
+        """Format LangGraph final state into API response and save slots to database"""
+        from database.connection import get_db_context
+        from database.models import TimeSlot as TimeSlotModel
         
         slots = self.format_time_slots(
             final_state.get("ranked_recommendations", [])
         )
+        
+        # Save slots to database so they can be confirmed later
+        with get_db_context() as db:
+            for slot in slots:
+                db_slot = TimeSlotModel(
+                    id=slot.id,
+                    start_time=slot.start_time,
+                    end_time=slot.end_time,
+                    score=slot.score,
+                    confidence=slot.confidence,
+                    rank=slot.rank,
+                    reasoning=slot.reasoning,
+                    conflicts=[c.__dict__ for c in slot.conflicts] if slot.conflicts else [],
+                    attendee_availability=slot.attendee_availability,
+                    requires_approval=slot.requires_approval,
+                    recommended=slot.recommended
+                )
+                db.add(db_slot)
         
         return ScheduleResponse(
             request_id=str(uuid.uuid4()),
@@ -72,10 +92,10 @@ class ScheduleService:
                 id=slot.get("id", str(uuid.uuid4())),
                 start_time=slot["start_time"],
                 end_time=slot["end_time"],
-                score=slot.get("final_score", 0),
-                confidence=slot.get("confidence", 0),
+                score=slot.get("confidence", 0) * 100,  # Convert confidence (0-1) to score (0-100)
+                confidence=slot.get("confidence", 0) * 100,  # Also convert confidence to percentage
                 rank=slot.get("rank", 0),
-                reasoning=slot.get("reasoning", ""),
+                reasoning=slot.get("reasoning", "AI-recommended time slot based on availability"),
                 conflicts=self._format_conflicts(slot.get("conflicts", [])),
                 attendee_availability=slot.get("attendee_availability", []),
                 requires_approval=slot.get("requires_approval", False),

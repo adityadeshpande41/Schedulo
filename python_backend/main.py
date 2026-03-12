@@ -5,11 +5,27 @@ Main application entry point
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+import json
+from datetime import datetime
 
-from api.routes import schedule, meetings, preferences, agents, calendar
+# Load environment variables
+load_dotenv()
+
+from api.routes import schedule, meetings, preferences, agents, federation, calendar, scheduling_link
 from core.config import settings
 from database import init_db
+
+
+# Custom JSON encoder for datetime
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 @asynccontextmanager
@@ -58,7 +74,10 @@ app.include_router(schedule.router, prefix="/api/schedule", tags=["Schedule"])
 app.include_router(meetings.router, prefix="/api/meetings", tags=["Meetings"])
 app.include_router(preferences.router, prefix="/api/preferences", tags=["Preferences"])
 app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
+app.include_router(federation.router, prefix="/api", tags=["Federation"])
 app.include_router(calendar.router, prefix="/api", tags=["Calendar"])
+app.include_router(calendar.auth_router, prefix="/api", tags=["Auth"])
+app.include_router(scheduling_link.router, prefix="/api", tags=["Scheduling Links"])
 
 
 @app.get("/")

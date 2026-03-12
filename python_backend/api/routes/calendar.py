@@ -13,6 +13,7 @@ from database.models import CalendarIntegration, User
 from integrations.google_calendar import GoogleCalendarIntegration
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
+auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.get("/connect/google")
@@ -24,19 +25,30 @@ async def connect_google_calendar(
     Initiate Google Calendar OAuth flow
     Returns authorization URL to redirect user to
     """
-    # Check if user exists
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Generate OAuth URL
-    google_cal = GoogleCalendarIntegration()
-    auth_url = google_cal.get_authorization_url(user_id)
-    
-    return {"authorization_url": auth_url}
+    try:
+        # Check if user exists
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Generate OAuth URL
+        google_cal = GoogleCalendarIntegration()
+        auth_url = google_cal.get_authorization_url(user_id)
+        
+        return {"authorization_url": auth_url}
+    except Exception as e:
+        # Fallback if database not available - generate OAuth URL anyway
+        print(f"Database error in connect: {e}")
+        try:
+            google_cal = GoogleCalendarIntegration()
+            auth_url = google_cal.get_authorization_url(user_id)
+            return {"authorization_url": auth_url}
+        except Exception as oauth_error:
+            print(f"OAuth error: {oauth_error}")
+            raise HTTPException(status_code=500, detail="Failed to generate OAuth URL")
 
 
-@router.get("/auth/google/callback")
+@auth_router.get("/google/callback")
 async def google_calendar_callback(
     code: str = Query(...),
     state: str = Query(...),  # state contains user_id
@@ -95,22 +107,30 @@ async def get_calendar_status(
     """
     Check if user has connected calendar
     """
-    integration = db.query(CalendarIntegration).filter(
-        CalendarIntegration.user_id == user_id,
-        CalendarIntegration.is_active == True
-    ).first()
-    
-    if not integration:
+    try:
+        integration = db.query(CalendarIntegration).filter(
+            CalendarIntegration.user_id == user_id,
+            CalendarIntegration.is_active == True
+        ).first()
+        
+        if not integration:
+            return {
+                "connected": False,
+                "provider": None
+            }
+        
+        return {
+            "connected": True,
+            "provider": integration.provider,
+            "last_synced": integration.last_synced_at.isoformat() if integration.last_synced_at else None
+        }
+    except Exception as e:
+        # Fallback if database not available
+        print(f"Database error: {e}")
         return {
             "connected": False,
             "provider": None
         }
-    
-    return {
-        "connected": True,
-        "provider": integration.provider,
-        "last_synced": integration.last_synced_at.isoformat() if integration.last_synced_at else None
-    }
 
 
 @router.post("/sync/{user_id}")
@@ -144,6 +164,34 @@ async def sync_calendar(
         }
         
         events = await google_cal.fetch_events(credentials, start_date, end_date)
+        
+        # Save events to database
+        from database.models import CalendarEvent
+        
+        # Delete old events for this user in this date range
+        db.query(CalendarEvent).filter(
+            CalendarEvent.user_id == user_id,
+            CalendarEvent.start_time >= start_date,
+            CalendarEvent.end_time <= end_date
+        ).delete()
+        
+        # Insert new events
+        import uuid
+        for event in events:
+            calendar_event = CalendarEvent(
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                external_id=event["external_id"],
+                calendar_provider="google",
+                title=event["title"],
+                start_time=event["start_time"],
+                end_time=event["end_time"],
+                location=event.get("location"),
+                attendees=event.get("attendees", [])
+            )
+            db.add(calendar_event)
+        
+        db.commit()
         
         # Update last synced time
         integration.last_synced_at = datetime.utcnow()

@@ -24,8 +24,42 @@ class AgentService:
     async def get_current_activity(self) -> List[AgentActivityResponse]:
         """Get current activity status of all agents"""
         
-        # TODO: Get real-time status from agents
-        return self._get_mock_activity()
+        # Return idle status when no active scheduling
+        # Activity will be updated in real-time during scheduling via WebSocket
+        return [
+            AgentActivityResponse(
+                id="a1",
+                agent_type="calendar",
+                status="idle",
+                message="Ready to scan calendars",
+                timestamp=datetime.utcnow(),
+                progress=0
+            ),
+            AgentActivityResponse(
+                id="a2",
+                agent_type="behavior",
+                status="idle",
+                message="Ready to analyze preferences",
+                timestamp=datetime.utcnow(),
+                progress=0
+            ),
+            AgentActivityResponse(
+                id="a3",
+                agent_type="coordination",
+                status="idle",
+                message="Ready to coordinate schedules",
+                timestamp=datetime.utcnow(),
+                progress=0
+            ),
+            AgentActivityResponse(
+                id="a4",
+                agent_type="orchestrator",
+                status="idle",
+                message="Ready to orchestrate agents",
+                timestamp=datetime.utcnow(),
+                progress=0
+            )
+        ]
     
     def get_agents_info(self) -> List[AgentInfoResponse]:
         """Get information about all agents"""

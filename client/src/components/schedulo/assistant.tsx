@@ -22,8 +22,16 @@ export function ScheduloAssistant({ size = "md", animate = true, className, glow
     <motion.div
       className={cn("relative inline-flex items-center justify-center", className)}
       style={{ width: s, height: s }}
-      animate={animate ? { y: [0, -4, 0] } : undefined}
-      transition={animate ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : undefined}
+      animate={animate ? { 
+        rotate: [0, -3, 3, -3, 3, 0],
+        x: [0, -2, 2, -2, 2, 0]
+      } : undefined}
+      transition={animate ? { 
+        duration: 0.5, 
+        repeat: Infinity, 
+        repeatDelay: 2,
+        ease: "easeInOut" 
+      } : undefined}
     >
       {glowing && (
         <motion.div
@@ -32,6 +40,63 @@ export function ScheduloAssistant({ size = "md", animate = true, className, glow
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
         />
       )}
+      
+      {/* Z Z Z animation */}
+      {animate && (
+        <>
+          <motion.div
+            className="absolute text-purple-400 font-bold"
+            style={{ top: -10, left: s * 0.3, fontSize: s * 0.15 }}
+            animate={{ 
+              y: [-5, -15],
+              opacity: [0, 1, 0]
+            }}
+            transition={{ 
+              duration: 2,
+              repeat: Infinity,
+              repeatDelay: 0.5,
+              ease: "easeOut"
+            }}
+          >
+            Z
+          </motion.div>
+          <motion.div
+            className="absolute text-purple-400 font-bold"
+            style={{ top: -15, left: s * 0.45, fontSize: s * 0.18 }}
+            animate={{ 
+              y: [-5, -20],
+              opacity: [0, 1, 0]
+            }}
+            transition={{ 
+              duration: 2,
+              repeat: Infinity,
+              repeatDelay: 0.5,
+              delay: 0.3,
+              ease: "easeOut"
+            }}
+          >
+            Z
+          </motion.div>
+          <motion.div
+            className="absolute text-purple-400 font-bold"
+            style={{ top: -20, left: s * 0.6, fontSize: s * 0.22 }}
+            animate={{ 
+              y: [-5, -25],
+              opacity: [0, 1, 0]
+            }}
+            transition={{ 
+              duration: 2,
+              repeat: Infinity,
+              repeatDelay: 0.5,
+              delay: 0.6,
+              ease: "easeOut"
+            }}
+          >
+            Z
+          </motion.div>
+        </>
+      )}
+      
       <svg viewBox="0 0 120 120" fill="none" className="w-full h-full relative z-10">
         <defs>
           <linearGradient id="schedulo-grad" x1="0%" y1="0%" x2="100%" y2="100%">

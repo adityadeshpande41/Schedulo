@@ -5,6 +5,8 @@ Negotiates across attendees to resolve conflicts and find optimal times
 
 from typing import Dict, Any, List
 from .base_agent import BaseAgent, AgentStatus, AgentResult
+from services.external_user_service import ExternalUserService
+from services.federation_client import FederationClient
 
 
 class CoordinationAgent(BaseAgent):
@@ -15,6 +17,8 @@ class CoordinationAgent(BaseAgent):
     
     def __init__(self):
         super().__init__(agent_type="coordination", name="Coordination Agent")
+        self.external_service = ExternalUserService(internal_domain="acme.com")
+        self.federation_client = FederationClient()
     
     async def execute(self, context: Dict[str, Any]) -> AgentResult:
         """
@@ -22,7 +26,7 @@ class CoordinationAgent(BaseAgent):
         
         Context expected:
             - scored_windows: Windows with behavior scores
-            - attendee_ids: List of user IDs
+            - attendee_ids: List of user IDs or emails (internal or external)
             - priority: Meeting priority (high/medium/low)
             - preferences: User preferences from behavior agent
         """
@@ -33,6 +37,18 @@ class CoordinationAgent(BaseAgent):
             attendee_ids = context.get("attendee_ids", [])
             priority = context.get("priority", "medium")
             preferences = context.get("preferences", {})
+            
+            # Categorize attendees (internal vs external)
+            categorized = await self._categorize_attendees(attendee_ids)
+            
+            # Fetch external availability if needed
+            if categorized["has_external"]:
+                external_signals = await self._fetch_external_availability(
+                    categorized["external"],
+                    windows
+                )
+                # Merge external signals into windows
+                windows = self._merge_external_signals(windows, external_signals)
             
             # Fetch attendee constraints
             constraints = await self._fetch_attendee_constraints(attendee_ids)
@@ -318,6 +334,123 @@ class CoordinationAgent(BaseAgent):
             "avg_coordination_score": sum(w.get("coordination_score", 0) for w in windows) / len(windows) if windows else 0,
             "requires_approval": len([w for w in windows if w.get("requires_approval")])
         }
+    
+    async def _categorize_attendees(
+        self,
+        attendee_ids: List[str]
+    ) -> Dict[str, Any]:
+        """Categorize attendees into internal and external"""
+        return self.external_service.categorize_attendees(attendee_ids)
+    
+    async def _fetch_external_availability(
+        self,
+        external_attendees: List[Dict[str, Any]],
+        time_windows: List[Dict[str, Any]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Fetch availability from external Schedulo instances
+        Falls back to email-based scheduling if federation fails
+        
+        Returns:
+            Dict mapping email to availability signals
+        """
+        external_signals = {}
+        
+        for attendee in external_attendees:
+            email = attendee["email"]
+            endpoint = attendee["endpoint"]
+            
+            # Try federation first
+            response = await self.federation_client.request_availability(
+                endpoint=endpoint,
+                user_email=email,
+                time_windows=time_windows,
+                meeting_context={}
+            )
+            
+            # Check if federation succeeded
+            if response.get("status") == "error":
+                # Federation failed - mark for email fallback
+                print(f"⚠️  Federation failed for {email}, will use email fallback")
+                external_signals[email] = [
+                    {
+                        "start_time": w["start_time"],
+                        "end_time": w["end_time"],
+                        "status": "unknown",
+                        "confidence": 0.0,
+                        "requires_email_fallback": True,
+                        "fallback_reason": response.get("error", "External Schedulo not available")
+                    }
+                    for w in time_windows
+                ]
+            else:
+                # Federation succeeded
+                external_signals[email] = response.get("signals", [])
+        
+        return external_signals
+    
+    def _merge_external_signals(
+        self,
+        windows: List[Dict[str, Any]],
+        external_signals: Dict[str, List[Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Merge external availability signals into time windows
+        
+        Treats external signals same as internal agent signals
+        Handles fallback for users without Schedulo
+        """
+        for window in windows:
+            window_start = window.get("start_time")
+            
+            # Track if any external user needs email fallback
+            email_fallback_needed = []
+            
+            # Find matching signals for this window
+            for email, signals in external_signals.items():
+                for signal in signals:
+                    if signal["start_time"] == window_start:
+                        # Add external signal to window
+                        if "external_signals" not in window:
+                            window["external_signals"] = {}
+                        
+                        window["external_signals"][email] = {
+                            "status": signal["status"],
+                            "confidence": signal["confidence"],
+                            "flexibility": signal.get("flexibility", 0.0),
+                            "source": "external"
+                        }
+                        
+                        # Check if email fallback needed
+                        if signal.get("requires_email_fallback"):
+                            email_fallback_needed.append({
+                                "email": email,
+                                "reason": signal.get("fallback_reason", "External system unavailable")
+                            })
+                        
+                        # If external user is busy, mark window
+                        elif signal["status"] == "busy":
+                            if "conflicts" not in window:
+                                window["conflicts"] = []
+                            window["conflicts"].append({
+                                "type": "hard",
+                                "attendee": email,
+                                "description": f"{email} is unavailable"
+                            })
+            
+            # Mark window if email fallback needed
+            if email_fallback_needed:
+                window["requires_email_fallback"] = True
+                window["email_fallback_users"] = email_fallback_needed
+                window["fallback_message"] = (
+                    f"Will send email invitation to {len(email_fallback_needed)} external user(s) "
+                    f"who don't have Schedulo"
+                )
+        
+        return windows
+    
+    def get_description(self) -> str:
+        return "Negotiates across internal and external attendees to resolve conflicts and find mutually optimal times."
     
     def get_capabilities(self) -> List[str]:
         return [

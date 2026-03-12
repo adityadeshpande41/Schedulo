@@ -2,24 +2,70 @@
 
 ## 🎯 What the User Sees
 
-### Step 1: User Arrives at Landing Page
-
-**URL**: http://localhost:5173
-
-**What they see**:
-- Hero section with "AI-Powered Meeting Scheduling"
-- "Learn More" button → Takes them to Agent Flow page
-- "Try Demo" button → Takes them directly to Dashboard
-
-**User Action**: Clicks "Try Demo"
-
----
-
-### Step 2: Dashboard - Schedule a Meeting
+### Scenario 1: Internal Meeting (Same Company)
 
 **URL**: http://localhost:5173/dashboard
 
-**What they see**:
+**User Action**: Schedule meeting with Sarah Chen (sarah@acme.com)
+
+```
+Meeting Title: [Q2 Planning Session]
+Attendees: ☑ Sarah Chen (sarah@acme.com)
+[Find Optimal Times] 🤖
+```
+
+**Behind the scenes**:
+- Both users in same database
+- Personal agents run locally
+- Fast coordination (< 2 seconds)
+
+---
+
+### Scenario 2: External Meeting (Different Company)
+
+**URL**: http://localhost:5173/dashboard
+
+**User Action**: Schedule meeting with John Smith (john@bigcorp.com)
+
+```
+Meeting Title: [Partnership Discussion]
+Attendees: ☑ John Smith (john@bigcorp.com) 🌐
+[Find Optimal Times] 🤖
+```
+
+**What happens** (user sees loading spinner):
+
+```
+🔍 Parsing request...
+   "Schedule Partnership Discussion with john@bigcorp.com"
+   
+🌐 Detecting external attendee...
+   ✓ john@bigcorp.com is external (bigcorp.com)
+   ✓ Routing to schedulo.bigcorp.com
+   
+📡 Contacting BigCorp's Schedulo...
+   POST https://schedulo.bigcorp.com/api/federation/availability
+   
+🤖 BigCorp's agent checking John's calendar...
+   (Runs on their server, private to them)
+   
+📨 Receiving availability signals...
+   ✓ Monday 10 AM: Available (88% confidence)
+   ✓ Monday 2 PM: Busy
+   ✓ Tuesday 3 PM: Available (92% confidence)
+   
+🤝 Coordinating with your availability...
+   Finding slots where BOTH are available...
+   
+✅ Found 5 consensus slots!
+```
+
+**Key difference**: 
+- 🏢 Internal: "Sarah is available" (from local database)
+- 🌐 External: "John is available" (from BigCorp's API)
+- Privacy preserved in both cases!
+
+---
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Schedule New Meeting                               │
@@ -52,26 +98,29 @@
 ```
 🔍 Parsing request...
    "Schedule Q2 Planning Session for 60 minutes with 
-    Sarah Chen and Marcus Johnson"
+    Sarah Chen and John Smith"
+   
+🌐 Detecting attendees...
+   ✓ Sarah Chen (sarah@acme.com) - Internal
+   ✓ John Smith (john@bigcorp.com) - External
    
 📅 Generating 20 candidate time windows...
    - Next week, working hours (9 AM - 5 PM)
    - Excluding weekends
    
-🤖 Running 3 personal agents in parallel...
+🤖 Running agents in parallel...
 
-   Alex's Agent:
+   Alex's Agent (Internal):
    ├─ Loading calendar from database...
    ├─ Loading preferences (prefers afternoon)
    ├─ Training ML model on 45 historical meetings...
    ├─ Checking 20 time slots...
    │  ├─ Monday 10 AM: Available (92% confidence)
    │  ├─ Monday 2 PM: Available (95% confidence) ⭐
-   │  ├─ Tuesday 10 AM: Busy (existing meeting)
    │  └─ ...
-   └─ Sharing availability signals (not calendar details!)
+   └─ Sharing availability signals
    
-   Sarah's Agent:
+   Sarah's Agent (Internal):
    ├─ Loading calendar from database...
    ├─ Loading preferences (prefers morning)
    ├─ Training ML model on 38 historical meetings...
@@ -81,24 +130,27 @@
    │  └─ ...
    └─ Sharing availability signals
    
-   Marcus's Agent:
-   ├─ Loading calendar from database...
-   ├─ Loading preferences (flexible)
-   ├─ Training ML model on 52 historical meetings...
-   ├─ Checking 20 time slots...
+   📡 Contacting BigCorp's Schedulo...
+   POST https://schedulo.bigcorp.com/api/federation/availability
+   
+   John's Agent (External - runs on BigCorp's server):
+   ├─ BigCorp receives request
+   ├─ John's agent checks HIS calendar (private)
+   ├─ ML model predicts acceptance
+   ├─ Returns ONLY availability signals (no details!)
    │  ├─ Monday 10 AM: Available (90% confidence) ⭐
-   │  ├─ Monday 2 PM: Available (85% confidence)
+   │  ├─ Monday 2 PM: Busy
    │  └─ ...
-   └─ Sharing availability signals
+   └─ Response sent back to Acme
 
 🤝 Coordinating agents...
-   Finding slots where ALL 3 agents are available...
+   Finding slots where ALL 3 are available...
+   (Including external signals from BigCorp)
    
-   ✅ Found 8 consensus slots:
+   ✅ Found 6 consensus slots:
    1. Monday 10 AM (90% confidence) ⭐
-   2. Monday 2 PM (85% confidence)
-   3. Tuesday 3 PM (82% confidence)
-   4. Wednesday 11 AM (80% confidence)
+   2. Tuesday 3 PM (82% confidence)
+   3. Wednesday 11 AM (80% confidence)
    ...
 
 ⚠️ Checking edge cases...
@@ -106,11 +158,13 @@
    ✓ Working hours: All within 9-5
    ✓ Back-to-back: No issues
    ✓ Duration: Fits in all slots
+   ✓ External connectivity: BigCorp responded
 
 📊 Ranking recommendations...
    Using OpenAI to generate explanations...
 
-✅ Workflow complete! (3.2 seconds)
+✅ Workflow complete! (4.8 seconds)
+   (Slightly slower due to external API call)
 ```
 
 ---

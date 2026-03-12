@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { ScheduloAssistant } from "@/components/schedulo/assistant";
 import { CalendarConnect } from "@/components/schedulo/calendar-connect";
 import { usePageMeta } from "@/hooks/use-page-meta";
@@ -18,7 +20,7 @@ import { useCreateScheduleRequest } from "@/hooks/use-schedule";
 import { mockUsers } from "@/data/mock";
 import type { TimeSlot } from "@/types/schedulo";
 import {
-  Calendar,
+  Calendar as CalendarIcon,
   Clock,
   Users,
   Video,
@@ -38,6 +40,7 @@ import {
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
 const agentMeta: Record<string, { icon: typeof Cpu; color: string; label: string }> = {
   calendar: { icon: CalendarSearch, color: "text-blue-500", label: "Calendar Agent" },
@@ -69,11 +72,27 @@ const prefIcons: Record<string, typeof Sun> = {
 };
 
 function formatTime(dateStr: string) {
-  return new Date(dateStr).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      return "Invalid Time";
+    }
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  } catch (e) {
+    return "Invalid Time";
+  }
 }
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      return "Invalid Date";
+    }
+    return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  } catch (e) {
+    return "Invalid Date";
+  }
 }
 
 export default function Dashboard() {
@@ -82,6 +101,12 @@ export default function Dashboard() {
   const userId = import.meta.env.VITE_DEFAULT_USER_ID || "u1";
   
   const { data: meetings, isLoading: meetingsLoading } = useUpcomingMeetings(userId);
+  
+  // Debug: log meetings data
+  if (meetings) {
+    console.log('Meetings data:', meetings);
+    console.log('First meeting:', meetings[0]);
+  }
   const { data: agents, isLoading: agentsLoading } = useAgentActivity();
   const { data: prefs, isLoading: prefsLoading } = useUserPreferences(userId);
   
@@ -90,23 +115,69 @@ export default function Dashboard() {
   const [showSlots, setShowSlots] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slots, setSlots] = useState<TimeSlot[] | null>(null);
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: new Date(),
+    to: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+  });
 
   const handleFindSlots = async () => {
     setLoadingSlots(true);
     setShowSlots(true);
     try {
+      // Get user's timezone
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      
+      // Prepare date range
+      let timeRange = undefined;
+      if (dateRange.from && dateRange.to) {
+        const startStr = format(dateRange.from, "yyyy-MM-dd");
+        const endStr = format(dateRange.to, "yyyy-MM-dd");
+        
+        timeRange = {
+          start: `${startStr}T00:00:00`,
+          end: `${endStr}T23:59:59`,
+          timezone: userTimezone
+        };
+      }
+      
       const result = await createSchedule.mutateAsync({
         title: "New Meeting",
-        attendees: ["u2", "u3"],
+        attendees: [userId],
         duration: 30,
         priority: "medium",
         type: "team_sync",
+        preferredTimeRange: timeRange
       });
+      console.log("API Response:", result);
+      console.log("Slots:", result.recommended_slots);
       setSlots(result.recommended_slots);
     } catch (error) {
       console.error("Error finding slots:", error);
     } finally {
       setLoadingSlots(false);
+    }
+  };
+  
+  const handleSelectSlot = async (slot: TimeSlot) => {
+    try {
+      // Call the confirm endpoint
+      const response = await fetch(`http://localhost:8000/api/schedule/slots/${slot.id}/confirm`, {
+        method: "POST",
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        alert(`✅ Meeting booked!\n\n📅 ${formatDate(slot.start_time)} at ${formatTime(slot.start_time)}\n\n${data.google_event_id ? '✓ Added to your Google Calendar\n✓ Calendar invites sent' : '⚠️ Added to Schedulo (Google Calendar sync failed)'}`);
+        
+        // Refresh meetings list
+        window.location.reload();
+      } else {
+        throw new Error(data.detail || "Failed to book meeting");
+      }
+    } catch (error) {
+      console.error("Error booking slot:", error);
+      alert("❌ Failed to book meeting. Please try again.");
     }
   };
 
@@ -159,12 +230,12 @@ export default function Dashboard() {
                                 </div>
                                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
                                   <span className="flex items-center gap-1">
-                                    <Calendar className="h-3 w-3" />
-                                    {formatDate(m.startTime)}
+                                    <CalendarIcon className="h-3 w-3" />
+                                    {formatDate(m.start_time)}
                                   </span>
                                   <span className="flex items-center gap-1">
                                     <Clock className="h-3 w-3" />
-                                    {formatTime(m.startTime)} — {formatTime(m.endTime)}
+                                    {formatTime(m.start_time)} — {formatTime(m.end_time)}
                                   </span>
                                   {m.location && (
                                     <span className="flex items-center gap-1">
@@ -191,8 +262,8 @@ export default function Dashboard() {
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
-                                <div className="text-2xl font-bold text-primary tabular-nums">{formatTime(m.startTime).split(" ")[0]}</div>
-                                <div className="text-[10px] text-muted-foreground uppercase">{formatTime(m.startTime).split(" ")[1]}</div>
+                                <div className="text-2xl font-bold text-primary tabular-nums">{formatTime(m.start_time).split(" ")[0]}</div>
+                                <div className="text-[10px] text-muted-foreground uppercase">{formatTime(m.start_time).split(" ")[1]}</div>
                               </div>
                             </div>
                           </Card>
@@ -208,6 +279,47 @@ export default function Dashboard() {
                       <div>
                         <Label htmlFor="title" className="text-sm font-medium">Meeting Title</Label>
                         <Input id="title" placeholder="e.g., Product Review" className="mt-1.5" data-testid="input-meeting-title" />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Date Range</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full mt-1.5 justify-start text-left font-normal",
+                                !dateRange.from && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {dateRange.from ? (
+                                dateRange.to ? (
+                                  <>
+                                    {format(dateRange.from, "LLL dd, y")} -{" "}
+                                    {format(dateRange.to, "LLL dd, y")}
+                                  </>
+                                ) : (
+                                  format(dateRange.from, "LLL dd, y")
+                                )
+                              ) : (
+                                <span>Pick a date range</span>
+                              )}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              initialFocus
+                              mode="range"
+                              defaultMonth={dateRange.from}
+                              selected={{ from: dateRange.from, to: dateRange.to }}
+                              onSelect={(range) => setDateRange({ from: range?.from, to: range?.to })}
+                              numberOfMonths={2}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          AI will find the best times within this date range
+                        </p>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -257,15 +369,15 @@ export default function Dashboard() {
                       </div>
                       <div>
                         <Label className="text-sm font-medium">Attendees</Label>
-                        <div className="mt-1.5 flex flex-wrap gap-2">
-                          {mockUsers.slice(1, 4).map((u) => (
-                            <Badge key={u.id} variant="secondary" className="gap-1 text-xs cursor-pointer hover:bg-primary/10 hover:text-primary transition-colors" data-testid={`badge-attendee-${u.id}`}>
-                              {u.name}
-                            </Badge>
-                          ))}
-                          <Badge variant="outline" className="gap-1 text-xs cursor-pointer hover:bg-primary/10 transition-colors">
-                            + Add
-                          </Badge>
+                        <div className="mt-1.5">
+                          <Input 
+                            placeholder="Enter email addresses (comma separated)" 
+                            className="text-sm"
+                            data-testid="input-attendees"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Add attendee email addresses to check their availability
+                          </p>
                         </div>
                       </div>
                       <Button onClick={handleFindSlots} className="w-full gap-2" data-testid="button-find-slots">
@@ -293,7 +405,7 @@ export default function Dashboard() {
                           ))
                         ) : (
                           slots?.map((slot, i) => (
-                            <SlotCard key={slot.id} slot={slot} index={i} />
+                            <SlotCard key={slot.id} slot={slot} index={i} onSelect={handleSelectSlot} />
                           ))
                         )}
                       </motion.div>
@@ -421,10 +533,10 @@ export default function Dashboard() {
                 <h3 className="text-sm font-semibold mb-3">Quick Stats</h3>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: "This Week", value: "12", sub: "meetings" },
-                    { label: "AI Scheduled", value: "8", sub: "automated" },
-                    { label: "Time Saved", value: "2.5h", sub: "this week" },
-                    { label: "Conflicts", value: "1", sub: "resolved" },
+                    { label: "This Week", value: meetings?.length || "0", sub: "meetings" },
+                    { label: "Connected", value: "1", sub: "calendar" },
+                    { label: "Ready", value: "✓", sub: "to schedule" },
+                    { label: "AI Agents", value: "4", sub: "active" },
                   ].map((stat) => (
                     <div key={stat.label} className="text-center p-3 rounded-lg bg-muted/50">
                       <div className="text-xl font-bold text-primary tabular-nums">{stat.value}</div>
@@ -441,7 +553,21 @@ export default function Dashboard() {
   );
 }
 
-function SlotCard({ slot, index }: { slot: TimeSlot; index: number }) {
+function SlotCard({ slot, index, onSelect }: { slot: TimeSlot; index: number; onSelect?: (slot: TimeSlot) => void }) {
+  const [isBooking, setIsBooking] = useState(false);
+  
+  console.log(`Slot ${index} score:`, slot.score, "Full slot:", slot);
+  
+  const handleBook = async () => {
+    if (!onSelect) return;
+    setIsBooking(true);
+    try {
+      await onSelect(slot);
+    } finally {
+      setIsBooking(false);
+    }
+  };
+  
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -450,7 +576,7 @@ function SlotCard({ slot, index }: { slot: TimeSlot; index: number }) {
     >
       <Card
         className={cn(
-          "p-4 transition-all hover:border-primary/30",
+          "p-4 transition-all hover:border-primary/30 cursor-pointer",
           slot.recommended && "border-primary/40 bg-primary/5"
         )}
         data-testid={`card-slot-${slot.id}`}
@@ -459,7 +585,7 @@ function SlotCard({ slot, index }: { slot: TimeSlot; index: number }) {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm font-semibold">
-                {formatDate(slot.startTime)} · {formatTime(slot.startTime)} — {formatTime(slot.endTime)}
+                {formatDate(slot.start_time)} · {formatTime(slot.start_time)} — {formatTime(slot.end_time)}
               </span>
               {slot.recommended && (
                 <Badge className="text-[10px] px-1.5 py-0 bg-primary/20 text-primary border-0">
@@ -488,13 +614,23 @@ function SlotCard({ slot, index }: { slot: TimeSlot; index: number }) {
                 ))}
               </div>
             )}
+            <div className="mt-3">
+              <Button 
+                size="sm" 
+                onClick={handleBook}
+                disabled={isBooking}
+                className="text-xs"
+              >
+                {isBooking ? "Booking..." : "Book This Slot"}
+              </Button>
+            </div>
           </div>
           <div className="text-right shrink-0">
             <div className={cn(
               "text-2xl font-bold tabular-nums",
               slot.score >= 90 ? "text-emerald-500" : slot.score >= 70 ? "text-amber-500" : "text-muted-foreground"
             )}>
-              {slot.score}
+              {Math.round(slot.score)}
             </div>
             <div className="text-[10px] text-muted-foreground">score</div>
           </div>
