@@ -62,7 +62,8 @@ logs/
 
 # Google credentials (sensitive)
 google_credentials.json
-*credentials*.json
+# But allow example file
+!google_credentials.example.json
 
 # Local state
 .local/
