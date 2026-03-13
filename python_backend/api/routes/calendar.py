@@ -57,6 +57,7 @@ async def google_calendar_callback(
     """
     Handle Google OAuth callback
     Exchange code for tokens and store in database
+    Creates new user if connecting for the first time
     """
     try:
         google_cal = GoogleCalendarIntegration()
@@ -64,6 +65,27 @@ async def google_calendar_callback(
         # Exchange code for tokens
         token_data = await google_cal.handle_oauth_callback(code, state)
         user_id = token_data["user_id"]
+        user_info = token_data.get("user_info")
+        
+        # If user_id is "new", create a new user from Google info
+        if user_id == "new" and user_info:
+            import uuid
+            # Generate new user ID
+            new_user_id = f"u_{uuid.uuid4().hex[:8]}"
+            
+            # Create new user
+            new_user = User(
+                id=new_user_id,
+                name=user_info.get("name", "New User"),
+                email=user_info.get("email"),
+                role="User",
+                timezone="America/New_York"  # Default, can be updated later
+            )
+            db.add(new_user)
+            db.commit()
+            
+            user_id = new_user_id
+            print(f"✅ Created new user: {user_id} ({user_info.get('email')})")
         
         # Check if integration already exists
         existing = db.query(CalendarIntegration).filter(
@@ -91,11 +113,13 @@ async def google_calendar_callback(
         
         db.commit()
         
-        # Redirect back to frontend
-        return RedirectResponse(url=f"http://localhost:5173/dashboard?calendar_connected=true")
+        # Redirect back to frontend with the user_id
+        return RedirectResponse(url=f"http://localhost:5173/dashboard?calendar_connected=true&user_id={user_id}")
         
     except Exception as e:
         print(f"OAuth callback error: {e}")
+        import traceback
+        traceback.print_exc()
         return RedirectResponse(url=f"http://localhost:5173/dashboard?calendar_error=true")
 
 

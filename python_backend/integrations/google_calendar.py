@@ -22,7 +22,9 @@ class GoogleCalendarIntegration:
     
     SCOPES = [
         'https://www.googleapis.com/auth/calendar.readonly',
-        'https://www.googleapis.com/auth/calendar.events'
+        'https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile'
     ]
     
     def __init__(self):
@@ -74,7 +76,8 @@ class GoogleCalendarIntegration:
             "user_id": "u1",
             "access_token": "...",
             "refresh_token": "...",
-            "expires_at": datetime
+            "expires_at": datetime,
+            "user_info": {"email": "...", "name": "..."}
         }
         """
         user_id = state
@@ -92,6 +95,21 @@ class GoogleCalendarIntegration:
         flow.fetch_token(code=code)
         credentials = flow.credentials
         
+        # Get user info from Google
+        user_info = None
+        try:
+            # Use the credentials to get user info
+            from googleapiclient.discovery import build
+            oauth2_service = build('oauth2', 'v2', credentials=credentials)
+            user_info_response = oauth2_service.userinfo().get().execute()
+            user_info = {
+                "email": user_info_response.get("email"),
+                "name": user_info_response.get("name"),
+                "picture": user_info_response.get("picture")
+            }
+        except Exception as e:
+            print(f"Failed to get user info: {e}")
+        
         # Clean up stored flow
         if user_id in _flow_storage:
             del _flow_storage[user_id]
@@ -100,7 +118,8 @@ class GoogleCalendarIntegration:
             "user_id": user_id,
             "access_token": credentials.token,
             "refresh_token": credentials.refresh_token,
-            "expires_at": credentials.expiry
+            "expires_at": credentials.expiry,
+            "user_info": user_info
         }
     
     def get_calendar_service(self, credentials_dict: Dict[str, Any]):
@@ -181,11 +200,11 @@ class GoogleCalendarIntegration:
                 'summary': event_data['title'],
                 'start': {
                     'dateTime': event_data['start_time'].isoformat(),
-                    'timeZone': 'UTC',
+                    'timeZone': event_data.get('timezone', 'America/New_York'),
                 },
                 'end': {
                     'dateTime': event_data['end_time'].isoformat(),
-                    'timeZone': 'UTC',
+                    'timeZone': event_data.get('timezone', 'America/New_York'),
                 },
                 'attendees': [
                     {'email': email} for email in event_data.get('attendees', [])

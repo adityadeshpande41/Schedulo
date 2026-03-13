@@ -86,30 +86,45 @@ class MeetingService:
                 )
             ).order_by(CalendarEvent.start_time).all()
             
-            # Add calendar events as meetings
+            # Add calendar events as meetings (deduplicate with Schedulo meetings)
             for event in calendar_events:
-                duration = int((event.end_time - event.start_time).total_seconds() / 60)
+                # Check if this calendar event overlaps with any Schedulo meeting
+                is_duplicate = False
+                for existing in result:
+                    # Consider it a duplicate if times match exactly or overlap significantly
+                    if (existing.start_time == event.start_time and 
+                        existing.end_time == event.end_time):
+                        is_duplicate = True
+                        break
+                    # Also check for title similarity (same meeting synced to calendar)
+                    if (existing.title.lower() == event.title.lower() and
+                        abs((existing.start_time - event.start_time).total_seconds()) < 300):  # Within 5 minutes
+                        is_duplicate = True
+                        break
                 
-                result.append(MeetingResponse(
-                    id=f"cal_{event.id}",
-                    title=event.title,
-                    type="external",  # Mark as external calendar event
-                    start_time=event.start_time,
-                    end_time=event.end_time,
-                    duration=duration,
-                    attendees=[AttendeeResponse(
-                        id=user_id,
-                        name="You",
-                        email="",
-                        role="Organizer",
-                        availability="busy",
-                        response_status="accepted"
-                    )],
-                    status="confirmed",
-                    priority="medium",
-                    location=event.location,
-                    description=event.description
-                ))
+                if not is_duplicate:
+                    duration = int((event.end_time - event.start_time).total_seconds() / 60)
+                    
+                    result.append(MeetingResponse(
+                        id=f"cal_{event.id}",
+                        title=event.title,
+                        type="external",  # Mark as external calendar event
+                        start_time=event.start_time,
+                        end_time=event.end_time,
+                        duration=duration,
+                        attendees=[AttendeeResponse(
+                            id=user_id,
+                            name="You",
+                            email="",
+                            role="Organizer",
+                            availability="busy",
+                            response_status="accepted"
+                        )],
+                        status="confirmed",
+                        priority="medium",
+                        location=event.location,
+                        description=event.description
+                    ))
             
             # Sort all by start time
             result.sort(key=lambda x: x.start_time)

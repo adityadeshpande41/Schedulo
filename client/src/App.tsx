@@ -9,6 +9,8 @@ import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import AgentFlow from "@/pages/agent-flow";
 import DecisionPage from "@/pages/decision";
+import TryDemo from "@/pages/try-demo";
+import LearnMore from "@/pages/learn-more";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -46,6 +48,22 @@ function Router() {
             <>
               <Navbar theme={theme} onToggleTheme={toggleTheme} variant="app" />
               <DecisionPage />
+            </>
+          )}
+        </Route>
+        <Route path="/try-demo">
+          {() => (
+            <>
+              <Navbar theme={theme} onToggleTheme={toggleTheme} variant="landing" />
+              <TryDemo />
+            </>
+          )}
+        </Route>
+        <Route path="/learn-more">
+          {() => (
+            <>
+              <Navbar theme={theme} onToggleTheme={toggleTheme} variant="landing" />
+              <LearnMore />
             </>
           )}
         </Route>

@@ -127,7 +127,7 @@ async def get_recommended_slots(
 
 
 @router.post("/slots/{slot_id}/confirm")
-async def confirm_time_slot(slot_id: str):
+async def confirm_time_slot(slot_id: str, request: dict = None):
     """
     Confirm a selected time slot and create the meeting
     - Creates meeting in database
@@ -142,6 +142,10 @@ async def confirm_time_slot(slot_id: str):
         from integrations.google_calendar import GoogleCalendarIntegration
         import uuid
         
+        # Get meeting details from request body
+        meeting_title = request.get("title", "New Meeting") if request else "New Meeting"
+        attendee_emails = request.get("attendees", []) if request else []
+        
         # Get the time slot from database
         with get_db_context() as db:
             slot = db.query(TimeSlot).filter(TimeSlot.id == slot_id).first()
@@ -151,11 +155,22 @@ async def confirm_time_slot(slot_id: str):
             
             user_id = "u1"  # TODO: Get from auth in production
             
+            # Check if this time slot has already been booked
+            existing_meeting = db.query(Meeting).filter(
+                Meeting.start_time == slot.start_time,
+                Meeting.end_time == slot.end_time,
+                Meeting.created_by == user_id,
+                Meeting.status == "confirmed"
+            ).first()
+            
+            if existing_meeting:
+                raise HTTPException(status_code=400, detail="This time slot has already been booked")
+            
             # Create meeting in database
             meeting_id = f"mtg_{uuid.uuid4().hex[:12]}"
             meeting = Meeting(
                 id=meeting_id,
-                title="New Meeting",  # TODO: Get from slot metadata
+                title=meeting_title,
                 type="team_sync",
                 start_time=slot.start_time,
                 end_time=slot.end_time,
@@ -197,11 +212,12 @@ async def confirm_time_slot(slot_id: str):
                 google_event_id = await google_cal.create_event(
                     credentials_dict=credentials,
                     event_data={
-                        "title": "New Meeting",
+                        "title": meeting_title,
                         "start_time": slot.start_time,
                         "end_time": slot.end_time,
                         "description": "Meeting scheduled via Schedulo AI",
-                        "attendees": []  # TODO: Add other attendees' emails
+                        "attendees": attendee_emails,
+                        "timezone": "America/New_York"
                     }
                 )
                 

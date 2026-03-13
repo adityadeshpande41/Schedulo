@@ -53,8 +53,9 @@ export function CalendarConnect({ userId }: CalendarConnectProps) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
+      // Use "new" as user_id to create a new user from Google account
       const response = await fetch(
-        `http://localhost:8000/api/calendar/connect/google?user_id=${userId}`,
+        `http://localhost:8000/api/calendar/connect/google?user_id=new`,
         { signal: controller.signal }
       );
       

@@ -92,15 +92,15 @@ export default function Landing() {
             transition={{ duration: 0.6, delay: 0.45 }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
-            <Link href="/dashboard">
+            <Link href="/try-demo">
               <Button size="lg" className="gap-2 text-base px-8" data-testid="button-try-demo">
                 Try Demo
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
-            <Link href="/agents">
-              <Button variant="outline" size="lg" className="gap-2 text-base px-8" data-testid="button-view-agents">
-                View Agent Flow
+            <Link href="/learn-more">
+              <Button variant="outline" size="lg" className="gap-2 text-base px-8" data-testid="button-learn-more">
+                Learn More
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </Link>
@@ -193,12 +193,19 @@ export default function Landing() {
             <p className="text-muted-foreground text-lg max-w-xl mx-auto mb-8">
               Experience the future of intelligent meeting coordination.
             </p>
-            <Link href="/dashboard">
-              <Button size="lg" className="gap-2 text-base px-10" data-testid="button-cta-bottom">
-                Try the Demo
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link href="/try-demo">
+                <Button size="lg" className="gap-2 text-base px-10" data-testid="button-cta-bottom">
+                  Try the Demo
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+              <Link href="/learn-more">
+                <Button variant="outline" size="lg" className="gap-2 text-base px-10">
+                  Learn More
+                </Button>
+              </Link>
+            </div>
           </motion.div>
         </div>
       </section>

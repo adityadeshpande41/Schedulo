@@ -325,6 +325,44 @@ class BehaviorLearningModel:
         """Get historical reschedule rate for meeting type"""
         return self.reschedule_patterns.get(meeting_type, 0.3)
     
+    def predict_preference(
+        self,
+        day_of_week: int,
+        hour_of_day: int,
+        meeting_type: str,
+        duration: int,
+        priority: str
+    ) -> float:
+        """
+        Predict user's preference score for a given time slot
+        
+        Returns a score between 0.0 (not preferred) and 1.0 (highly preferred)
+        based on learned patterns from historical meetings
+        """
+        score = 1.0
+        
+        # Factor 1: Time of day preference (weight: 0.4)
+        time_score = self.time_preferences.get(hour_of_day, 0.5)
+        score *= (0.6 + 0.4 * time_score)
+        
+        # Factor 2: Day of week preference (weight: 0.3)
+        day_score = self.day_preferences.get(day_of_week, 0.5)
+        score *= (0.7 + 0.3 * day_score)
+        
+        # Factor 3: Meeting type preference (weight: 0.2)
+        type_score = self.type_preferences.get(meeting_type, 0.5)
+        score *= (0.8 + 0.2 * type_score)
+        
+        # Factor 4: Duration adjustment (weight: 0.1)
+        # Prefer shorter meetings slightly
+        if duration <= 30:
+            score *= 1.05
+        elif duration >= 90:
+            score *= 0.95
+        
+        # Ensure score is between 0 and 1
+        return max(0.0, min(1.0, score))
+    
     def get_learned_patterns(self) -> Dict[str, Any]:
         """Get all learned patterns for AI assistant"""
         return {

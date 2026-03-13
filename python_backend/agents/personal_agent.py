@@ -1,98 +1,74 @@
 """
-Personal Agent - Privacy-Preserving Individual Scheduling Agent
-Each user has their own agent that learns their preferences
+Personal Agent
+Privacy-preserving agent that runs locally for each user
+Analyzes calendar and preferences to generate availability signals
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from datetime import datetime, timedelta
-import json
+from dataclasses import dataclass
 
 from .base_agent import BaseAgent, AgentStatus, AgentResult
 from .ml_behavior_model import BehaviorLearningModel
-from .openai_integration import OpenAIAssistant
 
 
+@dataclass
 class AvailabilitySignal:
-    """Privacy-preserving availability signal"""
-    
-    def __init__(
-        self,
-        time_slot: Dict[str, datetime],
-        status: str,  # "available", "busy", "flexible", "prefer_not"
-        confidence: float,
-        flexibility_score: float = 0.0,
-        priority_override: Optional[str] = None
-    ):
-        self.time_slot = time_slot
-        self.status = status
-        self.confidence = confidence
-        self.flexibility_score = flexibility_score
-        self.priority_override = priority_override
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary (for sharing with coordination layer)"""
-        return {
-            "start_time": self.time_slot["start"].isoformat(),
-            "end_time": self.time_slot["end"].isoformat(),
-            "status": self.status,
-            "confidence": self.confidence,
-            "flexibility": self.flexibility_score,
-            "priority_override": self.priority_override
-        }
+    """
+    Privacy-preserving availability signal
+    Only shares constrained availability, not raw calendar data
+    """
+    time_window: Dict[str, datetime]  # start_time, end_time
+    availability_score: float  # 0.0 (unavailable) to 1.0 (highly available)
+    confidence: float  # How confident the agent is in this score
+    reasoning: str  # Why this score was given
+    conflicts: List[Dict[str, Any]]  # Soft/hard conflicts
 
 
 class PersonalAgent(BaseAgent):
     """
-    Privacy-preserving personal scheduling agent
-    
-    Key Features:
-    - Only accesses owner's private calendar
-    - Learns owner's preferences via ML
-    - Shares minimal information (availability signals only)
-    - Escalates to human when uncertain
+    Personal scheduling agent that runs for each user
+    Analyzes calendar, preferences, and behavior to generate availability signals
     """
     
     def __init__(self, user_id: str):
         super().__init__(agent_type="personal", name=f"Personal Agent ({user_id})")
         self.user_id = user_id
-        
-        # ML model for behavior learning
         self.behavior_model = BehaviorLearningModel(user_id)
-        
-        # OpenAI assistant for natural language understanding
-        self.ai_assistant = OpenAIAssistant(user_id)
-        
-        # Privacy: This agent ONLY accesses this user's data
-        self.private_calendar = None  # Will be loaded from DB
-        self.private_preferences = None
-        self.historical_data = None
     
     async def execute(self, context: Dict[str, Any]) -> AgentResult:
         """
-        Main execution: Analyze request and provide availability signals
+        Execute personal agent analysis
         
-        Context:
-            - request_type: "availability_check" | "preference_query" | "conflict_resolution"
-            - time_windows: List of potential time slots
-            - meeting_context: Meeting details (type, priority, attendees)
+        Context expected:
+            - request_type: "availability_check"
+            - time_windows: List of candidate time windows
+            - meeting_context: Meeting details (type, priority, etc.)
         """
-        self.update_status(AgentStatus.ANALYZING, f"Analyzing for {self.user_id}...")
+        self.update_status(AgentStatus.ANALYZING, f"Analyzing availability for {self.user_id}...")
         
         try:
             request_type = context.get("request_type")
+            time_windows = context.get("time_windows", [])
+            meeting_context = context.get("meeting_context", {})
             
             if request_type == "availability_check":
-                return await self._check_availability(context)
-            
-            elif request_type == "preference_query":
-                return await self._query_preferences(context)
-            
-            elif request_type == "conflict_resolution":
-                return await self._resolve_conflict(context)
-            
-            elif request_type == "learn_from_feedback":
-                return await self._learn_from_feedback(context)
-            
+                signals = await self._generate_availability_signals(
+                    time_windows,
+                    meeting_context
+                )
+                
+                self.update_status(AgentStatus.COMPLETE, 
+                                 f"Generated {len(signals)} availability signals")
+                
+                return self.create_result(
+                    data={
+                        "availability_signals": signals,
+                        "user_id": self.user_id
+                    },
+                    message=f"Analyzed {len(time_windows)} time windows",
+                    confidence=0.9
+                )
             else:
                 raise ValueError(f"Unknown request type: {request_type}")
                 
@@ -104,305 +80,268 @@ class PersonalAgent(BaseAgent):
                 errors=[str(e)]
             )
     
-    async def _check_availability(self, context: Dict[str, Any]) -> AgentResult:
+    async def _generate_availability_signals(
+        self,
+        time_windows: List[Dict[str, Any]],
+        meeting_context: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """
-        Check availability for proposed time windows
-        Returns privacy-preserving availability signals
+        Generate availability signals for each time window
         """
-        time_windows = context.get("time_windows", [])
-        meeting_context = context.get("meeting_context", {})
+        from database.connection import get_db_context
+        from database.models import CalendarEvent, UserPreference, CalendarIntegration
+        from integrations.google_calendar import GoogleCalendarIntegration
         
-        # Load private data (only this user's data)
-        await self._load_private_data()
+        signals = []
         
-        availability_signals = []
-        
-        for window in time_windows:
-            # 1. Check calendar (private)
-            is_busy = self._check_calendar_busy(window)
-            
-            # 2. ML prediction: Will user accept this slot?
-            # This is the key ML integration!
-            acceptance_prob = self.behavior_model.predict_acceptance(
-                window,
-                meeting_context,
-                self.historical_data
-            )
-            
-            # 3. Check learned preferences
-            preference_score = self._evaluate_preferences(window, meeting_context)
-            
-            # 4. Determine status
-            if is_busy:
-                # Check if user would reschedule
-                reschedule_prob = self.behavior_model.predict_reschedule_probability(
-                    window,
-                    meeting_context,
-                    self.historical_data
-                )
+        # Fetch user's calendar events
+        calendar_events = []
+        with get_db_context() as db:
+            # Try to get from database first
+            if time_windows:
+                # Handle both "start"/"end" and "start_time"/"end_time" formats
+                start_time = min(w.get("start_time") or w.get("start") for w in time_windows)
+                end_time = max(w.get("end_time") or w.get("end") for w in time_windows)
                 
-                if reschedule_prob > 0.7 and meeting_context.get("priority") == "high":
-                    status = "flexible"
-                    confidence = reschedule_prob
-                else:
-                    status = "busy"
-                    confidence = 1.0
-            else:
-                # Use ML prediction to determine confidence
-                # This makes each slot have different scores based on learned patterns!
-                if acceptance_prob > 0.8:
-                    status = "available"
-                    confidence = acceptance_prob
-                elif acceptance_prob > 0.5:
-                    status = "flexible"
-                    confidence = acceptance_prob
-                else:
-                    status = "prefer_not"
-                    confidence = 1.0 - acceptance_prob
+                calendar_events = db.query(CalendarEvent).filter(
+                    CalendarEvent.user_id == self.user_id,
+                    CalendarEvent.start_time <= end_time,
+                    CalendarEvent.end_time >= start_time
+                ).all()
+                
+                print(f"📅 [PersonalAgent] Found {len(calendar_events)} calendar events in database for {self.user_id}")
+                
+                # Convert to dict immediately while still in session
+                calendar_events_dict = [
+                    {
+                        "start_time": event.start_time,
+                        "end_time": event.end_time,
+                        "title": event.title
+                    }
+                    for event in calendar_events
+                ]
+                
+                print(f"📅 [PersonalAgent] Converted {len(calendar_events_dict)} events to dict")
+                
+                # Ensure all event times are timezone-aware
+                # The database stores times in local timezone but without timezone info
+                # We need to interpret them as EDT (America/New_York)
+                import pytz
+                edt = pytz.timezone('America/New_York')
+                for evt in calendar_events_dict:
+                    if evt['start_time'].tzinfo is None:
+                        # Interpret naive datetime as EDT
+                        evt['start_time'] = edt.localize(evt['start_time'])
+                    if evt['end_time'].tzinfo is None:
+                        # Interpret naive datetime as EDT
+                        evt['end_time'] = edt.localize(evt['end_time'])
+                    print(f"   - {evt['title']}: {evt['start_time']} to {evt['end_time']}")
+                
+                # If no events in database, try fetching from Google Calendar directly
+                if not calendar_events_dict:
+                    integration = db.query(CalendarIntegration).filter(
+                        CalendarIntegration.user_id == self.user_id,
+                        CalendarIntegration.is_active == True
+                    ).first()
+                    
+                    if integration:
+                        try:
+                            google_cal = GoogleCalendarIntegration()
+                            credentials = {
+                                "access_token": integration.access_token,
+                                "refresh_token": integration.refresh_token
+                            }
+                            
+                            # Fetch events from Google Calendar
+                            google_events = await google_cal.fetch_events(
+                                credentials,
+                                start_time,
+                                end_time
+                            )
+                            
+                            # Convert to our format
+                            calendar_events_dict = [
+                                {
+                                    'start_time': event['start_time'],
+                                    'end_time': event['end_time'],
+                                    'title': event['title']
+                                }
+                                for event in google_events
+                            ]
+                            
+                            print(f"✅ Fetched {len(calendar_events_dict)} events from Google Calendar for {self.user_id}")
+                        except Exception as e:
+                            print(f"❌ Failed to fetch from Google Calendar: {e}")
             
-            # 5. Calculate flexibility score
-            flexibility = self._calculate_flexibility(window, meeting_context)
-            
-            # 6. Create privacy-preserving signal
-            signal = AvailabilitySignal(
-                time_slot=window,
-                status=status,
-                confidence=confidence,  # Now varies based on ML predictions!
-                flexibility_score=flexibility,
-                priority_override=self._check_priority_override(window, meeting_context)
+            # Get user preferences
+            preferences = db.query(UserPreference).filter(
+                UserPreference.user_id == self.user_id,
+                UserPreference.active == True
+            ).all()
+        
+        # calendar_events_dict is already created above
+        # Analyze each time window
+        for window in time_windows:
+            signal = self._analyze_time_window(
+                window,
+                calendar_events_dict,
+                meeting_context
             )
-            
-            availability_signals.append(signal)
+            signals.append(signal)
         
-        self.update_status(AgentStatus.COMPLETE, f"Analyzed {len(time_windows)} windows")
-        
-        return self.create_result(
-            data={
-                "user_id": self.user_id,
-                "availability_signals": [s.to_dict() for s in availability_signals],
-                "overall_confidence": sum(s.confidence for s in availability_signals) / len(availability_signals) if availability_signals else 0,
-                "ml_model_trained": self.behavior_model.is_trained,
-                "training_samples": self.behavior_model.training_samples
-            },
-            message=f"Availability analysis complete for {self.user_id} (ML: {self.behavior_model.is_trained})",
-            confidence=sum(s.confidence for s in availability_signals) / len(availability_signals) if availability_signals else 0
-        )
+        return signals
     
-    async def _query_preferences(self, context: Dict[str, Any]) -> AgentResult:
+    def _analyze_time_window(
+        self,
+        window: Dict[str, Any],
+        calendar_events: List[Dict[str, Any]],
+        meeting_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
-        Query learned preferences using OpenAI
+        Analyze a single time window and generate availability signal
         """
-        query = context.get("query", "")
+        import pytz
         
-        # Use OpenAI to understand and answer preference queries
-        response = await self.ai_assistant.query_preferences(
-            query=query,
-            learned_patterns=self.behavior_model.get_learned_patterns(),
-            user_preferences=self.private_preferences
-        )
+        # Handle both "start"/"end" and "start_time"/"end_time" formats
+        start_time = window.get("start_time") or window.get("start")
+        end_time = window.get("end_time") or window.get("end")
         
-        return self.create_result(
-            data={"response": response},
-            message="Preference query answered",
-            confidence=0.9
-        )
-    
-    async def _resolve_conflict(self, context: Dict[str, Any]) -> AgentResult:
-        """
-        Resolve scheduling conflict using AI reasoning
-        """
-        conflict = context.get("conflict", {})
+        # Ensure start_time and end_time are timezone-aware
+        if start_time.tzinfo is None:
+            start_time = pytz.UTC.localize(start_time)
+        if end_time.tzinfo is None:
+            end_time = pytz.UTC.localize(end_time)
         
-        # Use OpenAI to reason about conflict resolution
-        resolution = await self.ai_assistant.resolve_conflict(
-            conflict=conflict,
-            user_patterns=self.behavior_model.get_learned_patterns(),
-            historical_decisions=self.historical_data
-        )
-        
-        # Check if escalation is needed
-        if resolution["confidence"] < 0.6:
-            resolution["escalate_to_human"] = True
-            resolution["escalation_reason"] = "Low confidence in conflict resolution"
-        
-        return self.create_result(
-            data=resolution,
-            message="Conflict resolution proposed",
-            confidence=resolution["confidence"]
-        )
-    
-    async def _learn_from_feedback(self, context: Dict[str, Any]) -> AgentResult:
-        """
-        Learn from user feedback to improve predictions
-        """
-        feedback = context.get("feedback", {})
-        
-        # Update ML model with new data
-        self.behavior_model.update_from_feedback(feedback)
-        
-        # Update OpenAI context
-        await self.ai_assistant.update_context(feedback)
-        
-        return self.create_result(
-            data={"updated": True},
-            message="Learned from feedback",
-            confidence=1.0
-        )
-    
-    async def _load_private_data(self):
-        """Load user's private data (calendar, preferences, history)"""
-        from services.user_data_service import UserDataService
-        from datetime import datetime, timedelta
-        
-        # Initialize data service
-        data_service = UserDataService()
-        
-        try:
-            # Load preferences
-            self.private_preferences = data_service.get_user_preferences(self.user_id)
-            
-            # Load calendar (next 30 days)
-            start_date = datetime.utcnow()
-            end_date = start_date + timedelta(days=30)
-            self.private_calendar = data_service.get_user_calendar(
-                self.user_id,
-                start_date,
-                end_date
-            )
-            
-            # Load historical data for ML training
-            self.historical_data = data_service.get_historical_meetings(
-                self.user_id,
-                lookback_days=90
-            )
-            
-            # Train ML model ONLY if not already trained
-            # This prevents retraining on every request (huge performance boost!)
-            if self.historical_data and not self.behavior_model.is_trained:
-                print(f"🤖 Training ML model for {self.user_id} with {len(self.historical_data)} samples...")
-                self.behavior_model.train(self.historical_data)
-                print(f"✅ ML model trained (accuracy: {self.behavior_model.model_accuracy:.2%})")
-            
-        finally:
-            data_service.close()
-    
-    def _check_calendar_busy(self, window: Dict[str, datetime]) -> bool:
-        """Check if time window conflicts with calendar"""
-        if not self.private_calendar:
-            return False
-        
-        from datetime import timezone
-        
-        start = window["start"]
-        end = window["end"]
-        
-        # Ensure start and end are timezone-aware
-        if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
-        if end.tzinfo is None:
-            end = end.replace(tzinfo=timezone.utc)
-        
-        # Check for conflicts
-        for event in self.private_calendar:
+        # Check for hard conflicts (existing meetings)
+        hard_conflicts = []
+        print(f"🔍 [PersonalAgent] Checking {len(calendar_events)} events for conflicts with {start_time} - {end_time}")
+        for event in calendar_events:
             event_start = event["start_time"]
             event_end = event["end_time"]
             
             # Ensure event times are timezone-aware
             if event_start.tzinfo is None:
-                event_start = event_start.replace(tzinfo=timezone.utc)
+                event_start = pytz.UTC.localize(event_start)
             if event_end.tzinfo is None:
-                event_end = event_end.replace(tzinfo=timezone.utc)
+                event_end = pytz.UTC.localize(event_end)
             
-            # Skip if not marked as busy
-            if not event.get("is_busy", True):
-                continue
+            if self._times_overlap(start_time, end_time, event_start, event_end):
+                print(f"   ⚠️  CONFLICT FOUND: {event['title']} ({event_start} - {event_end})")
+                hard_conflicts.append({
+                    "type": "hard",
+                    "description": f"Conflicts with: {event['title']}",
+                    "attendee_id": self.user_id
+                })
+        
+        # If hard conflict exists, availability is 0
+        if hard_conflicts:
+            return {
+                "time_window": {
+                    "start_time": start_time,
+                    "end_time": end_time
+                },
+                "availability_score": 0.0,
+                "confidence": 1.0,
+                "reasoning": f"Hard conflict: {hard_conflicts[0]['description']}",
+                "conflicts": hard_conflicts,
+                "user_id": self.user_id
+            }
+        
+        # Check for soft conflicts
+        soft_conflicts = []
+        availability_score = 1.0
+        
+        # Check if outside working hours
+        hour = start_time.hour
+        if hour < 9 or hour >= 17:
+            soft_conflicts.append({
+                "type": "soft",
+                "description": "Outside typical working hours",
+                "attendee_id": self.user_id
+            })
+            availability_score *= 0.7
+        
+        # Check if back-to-back with another meeting
+        for event in calendar_events:
+            event_start = event["start_time"]
+            event_end = event["end_time"]
             
-            # Check for overlap
-            if (event_start < end and event_end > start):
-                return True
+            # Ensure event times are timezone-aware
+            if event_start.tzinfo is None:
+                event_start = pytz.UTC.localize(event_start)
+            if event_end.tzinfo is None:
+                event_end = pytz.UTC.localize(event_end)
+            
+            time_diff_before = abs((start_time - event_end).total_seconds() / 60)
+            time_diff_after = abs((event_start - end_time).total_seconds() / 60)
+            
+            if time_diff_before < 15 or time_diff_after < 15:
+                soft_conflicts.append({
+                    "type": "soft",
+                    "description": "Back-to-back with another meeting",
+                    "attendee_id": self.user_id
+                })
+                availability_score *= 0.8
+                break
         
-        return False
+        # Use ML model to predict preference
+        try:
+            ml_score = self.behavior_model.predict_preference(
+                day_of_week=start_time.weekday(),
+                hour_of_day=start_time.hour,
+                meeting_type=meeting_context.get("type", "team_sync"),
+                duration=meeting_context.get("duration", 30),
+                priority=meeting_context.get("priority", "medium")
+            )
+            availability_score *= ml_score
+        except Exception as e:
+            print(f"ML prediction failed: {e}")
+        
+        reasoning = "Available"
+        if soft_conflicts:
+            reasoning = f"Available with {len(soft_conflicts)} soft conflict(s)"
+        
+        return {
+            "time_window": {
+                "start_time": start_time,
+                "end_time": end_time
+            },
+            "availability_score": availability_score,
+            "confidence": 0.9,
+            "reasoning": reasoning,
+            "conflicts": soft_conflicts,
+            "user_id": self.user_id
+        }
     
-    def _evaluate_preferences(
+    def _times_overlap(
         self,
-        window: Dict[str, datetime],
-        meeting_context: Dict[str, Any]
-    ) -> float:
-        """Evaluate how well window matches learned preferences"""
-        score = 0.5  # Base score
+        start1: datetime,
+        end1: datetime,
+        start2: datetime,
+        end2: datetime
+    ) -> bool:
+        """Check if two time ranges overlap"""
+        # Make both timezone-aware or both naive for comparison
+        if start1.tzinfo is not None and start2.tzinfo is None:
+            # start1 is aware, start2 is naive - make start2 aware (assume UTC)
+            import pytz
+            start2 = pytz.UTC.localize(start2) if start2.tzinfo is None else start2
+            end2 = pytz.UTC.localize(end2) if end2.tzinfo is None else end2
+        elif start1.tzinfo is None and start2.tzinfo is not None:
+            # start1 is naive, start2 is aware - make start1 aware (assume UTC)
+            import pytz
+            start1 = pytz.UTC.localize(start1) if start1.tzinfo is None else start1
+            end1 = pytz.UTC.localize(end1) if end1.tzinfo is None else end1
         
-        # Time of day preference
-        hour = window["start"].hour
-        if self.behavior_model.prefers_time_of_day(hour):
-            score += 0.2
-        
-        # Day of week preference
-        day = window["start"].weekday()
-        if self.behavior_model.prefers_day_of_week(day):
-            score += 0.15
-        
-        # Meeting type preference
-        meeting_type = meeting_context.get("type")
-        if self.behavior_model.prefers_meeting_type(meeting_type, hour):
-            score += 0.15
-        
-        return min(1.0, score)
-    
-    def _calculate_flexibility(
-        self,
-        window: Dict[str, datetime],
-        meeting_context: Dict[str, Any]
-    ) -> float:
-        """
-        Calculate how flexible user is for this slot
-        0.0 = inflexible, 1.0 = very flexible
-        """
-        flexibility = 0.5
-        
-        # High priority meetings reduce flexibility
-        if meeting_context.get("priority") == "high":
-            flexibility += 0.3
-        
-        # Internal meetings are more flexible
-        if meeting_context.get("type") in ["one_on_one", "team_sync"]:
-            flexibility += 0.2
-        
-        # Historical reschedule rate
-        reschedule_rate = self.behavior_model.get_reschedule_rate(meeting_context.get("type"))
-        flexibility += reschedule_rate * 0.3
-        
-        return min(1.0, flexibility)
-    
-    def _check_priority_override(
-        self,
-        window: Dict[str, datetime],
-        meeting_context: Dict[str, Any]
-    ) -> Optional[str]:
-        """
-        Check if this meeting type should override existing meetings
-        """
-        meeting_type = meeting_context.get("type")
-        priority = meeting_context.get("priority")
-        
-        # Client calls can override internal meetings
-        if meeting_type == "client_call" and priority == "high":
-            return "can_reschedule_internal"
-        
-        # Urgent meetings can override low-priority meetings
-        if priority == "high":
-            return "can_reschedule_low_priority"
-        
-        return None
+        return start1 < end2 and end1 > start2
     
     def get_capabilities(self) -> List[str]:
         return [
-            "Privacy-preserving availability checking",
-            "ML-based behavior prediction",
+            "Calendar analysis",
             "Preference learning",
-            "Conflict resolution",
-            "Smart escalation",
-            "Continuous learning"
+            "Behavior prediction",
+            "Privacy-preserving signals"
         ]
     
     def get_description(self) -> str:
-        return f"Personal scheduling agent for {self.user_id}. Learns preferences, protects privacy, and makes intelligent scheduling decisions."
+        return f"Personal scheduling agent for user {self.user_id}"

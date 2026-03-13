@@ -73,10 +73,10 @@ export function Navbar({ theme, onToggleTheme, variant = "landing" }: NavbarProp
             })}
           {variant === "landing" && (
             <>
-              <Link href="/agents">
-                <Button variant="ghost" size="sm" data-testid="link-agent-flow">Learn More</Button>
+              <Link href="/learn-more">
+                <Button variant="ghost" size="sm" data-testid="link-learn-more">Learn More</Button>
               </Link>
-              <Link href="/dashboard">
+              <Link href="/try-demo">
                 <Button variant="default" size="sm" data-testid="link-try-demo">Try Demo</Button>
               </Link>
             </>
@@ -91,7 +91,7 @@ export function Navbar({ theme, onToggleTheme, variant = "landing" }: NavbarProp
             </Avatar>
           )}
           {variant === "landing" && (
-            <Link href="/dashboard">
+            <Link href="/try-demo">
               <Button size="sm" className="gap-1.5" data-testid="button-get-started">
                 <Sparkles className="h-3.5 w-3.5" />
                 Get Started

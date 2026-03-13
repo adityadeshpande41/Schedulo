@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -98,7 +98,21 @@ function formatDate(dateStr: string) {
 export default function Dashboard() {
   usePageMeta({ title: "Dashboard — Schedulo", description: "Manage your AI-powered schedule with intelligent meeting coordination." });
 
-  const userId = import.meta.env.VITE_DEFAULT_USER_ID || "u1";
+  // Allow switching between users (demo mode)
+  const [selectedUserId, setSelectedUserId] = useState(import.meta.env.VITE_DEFAULT_USER_ID || "u1");
+  
+  // Check URL params for user_id (from OAuth callback)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const userIdFromUrl = params.get('user_id');
+    if (userIdFromUrl) {
+      setSelectedUserId(userIdFromUrl);
+      // Clean up URL
+      window.history.replaceState({}, '', '/dashboard');
+    }
+  }, []);
+  
+  const userId = selectedUserId;
   
   const { data: meetings, isLoading: meetingsLoading } = useUpcomingMeetings(userId);
   
@@ -115,6 +129,8 @@ export default function Dashboard() {
   const [showSlots, setShowSlots] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slots, setSlots] = useState<TimeSlot[] | null>(null);
+  const [meetingTitle, setMeetingTitle] = useState("New Meeting");
+  const [attendeesInput, setAttendeesInput] = useState("");
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
     from: new Date(),
     to: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
@@ -141,7 +157,7 @@ export default function Dashboard() {
       }
       
       const result = await createSchedule.mutateAsync({
-        title: "New Meeting",
+        title: meetingTitle,
         attendees: [userId],
         duration: 30,
         priority: "medium",
@@ -160,9 +176,22 @@ export default function Dashboard() {
   
   const handleSelectSlot = async (slot: TimeSlot) => {
     try {
-      // Call the confirm endpoint
+      // Parse attendees from input
+      const attendeeEmails = attendeesInput
+        .split(',')
+        .map(email => email.trim())
+        .filter(email => email.length > 0);
+      
+      // Call the confirm endpoint with meeting details
       const response = await fetch(`http://localhost:8000/api/schedule/slots/${slot.id}/confirm`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: meetingTitle,
+          attendees: attendeeEmails,
+        }),
       });
       
       const data = await response.json();
@@ -189,8 +218,29 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-2xl font-bold tracking-tight mb-1" data-testid="text-dashboard-title">Dashboard</h1>
-          <p className="text-muted-foreground text-sm">Manage your schedule with AI-powered intelligence.</p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight mb-1" data-testid="text-dashboard-title">Dashboard</h1>
+              <p className="text-muted-foreground text-sm">Manage your schedule with AI-powered intelligence.</p>
+            </div>
+            
+            {/* User Switcher (Demo Mode) */}
+            <div className="flex items-center gap-2">
+              <Label htmlFor="user-select" className="text-xs text-muted-foreground">View as:</Label>
+              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                <SelectTrigger className="w-[180px] h-9" id="user-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {mockUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </motion.div>
 
         <div className="grid lg:grid-cols-3 gap-6">
@@ -278,7 +328,14 @@ export default function Dashboard() {
                     <div className="space-y-4">
                       <div>
                         <Label htmlFor="title" className="text-sm font-medium">Meeting Title</Label>
-                        <Input id="title" placeholder="e.g., Product Review" className="mt-1.5" data-testid="input-meeting-title" />
+                        <Input 
+                          id="title" 
+                          placeholder="e.g., Product Review" 
+                          className="mt-1.5" 
+                          data-testid="input-meeting-title"
+                          value={meetingTitle}
+                          onChange={(e) => setMeetingTitle(e.target.value)}
+                        />
                       </div>
                       <div>
                         <Label className="text-sm font-medium">Date Range</Label>
@@ -374,6 +431,8 @@ export default function Dashboard() {
                             placeholder="Enter email addresses (comma separated)" 
                             className="text-sm"
                             data-testid="input-attendees"
+                            value={attendeesInput}
+                            onChange={(e) => setAttendeesInput(e.target.value)}
                           />
                           <p className="text-xs text-muted-foreground mt-1">
                             Add attendee email addresses to check their availability

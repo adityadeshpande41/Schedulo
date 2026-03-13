@@ -245,9 +245,12 @@ class LangGraphOrchestrator:
                     break
                 
                 user_signal = user_signals[i]
-                status = user_signal.get("status")
-                confidence = user_signal.get("confidence", 0)
-                flexibility = user_signal.get("flexibility", 0)
+                
+                # Handle both old and new signal formats
+                availability_score = user_signal.get("availability_score", 1.0)
+                status = user_signal.get("status", "available" if availability_score > 0 else "busy")
+                confidence = user_signal.get("confidence", availability_score)
+                flexibility = user_signal.get("flexibility", availability_score)
                 
                 # Slot doesn't work if anyone is busy (and not flexible)
                 if status == "busy":
@@ -263,9 +266,14 @@ class LangGraphOrchestrator:
                 avg_flexibility = total_flexibility / len(all_signals)
                 overall_confidence = min_confidence * 0.7 + avg_flexibility * 0.3
                 
+                # Extract time window from signal
+                time_window = signal_dict.get("time_window", signal_dict)
+                start_time = time_window.get("start_time") if isinstance(time_window, dict) else signal_dict.get("start_time")
+                end_time = time_window.get("end_time") if isinstance(time_window, dict) else signal_dict.get("end_time")
+                
                 consensus_slots.append({
-                    "start_time": signal_dict["start_time"],
-                    "end_time": signal_dict["end_time"],
+                    "start_time": start_time,
+                    "end_time": end_time,
                     "confidence": overall_confidence,
                     "attendee_count": len(all_signals),
                     "min_confidence": min_confidence,
